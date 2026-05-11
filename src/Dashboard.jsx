@@ -247,6 +247,8 @@ export default function App() {
   const [showPwModal, setShowPwModal] = useState(false);
   const [dlPw, setDlPw] = useState("");
   const [dlPwConfirm, setDlPwConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [showPwConfirm, setShowPwConfirm] = useState(false);
 
   const currentTab = TABS.find(t => t.key === tab);
   const chartData = useMemo(() => data.length ? aggregate(data, currentTab.field, incRet, incPerf, currentTab.order) : [], [data, tab, incRet, incPerf]);
@@ -461,8 +463,11 @@ export default function App() {
 
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: "rgba(232,228,220,0.5)", marginBottom: 6 }}>비밀번호</div>
-              <input type="password" value={dlPw} onChange={e => setDlPw(e.target.value)} placeholder="비밀번호 입력"
-                style={{ width: "100%", padding: "12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#E8E4DC", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+             <div style={{ position: "relative" }}>
+  <input type={showPw ? "text" : "password"} value={dlPw} onChange={e => { const v = e.target.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/g, ""); setDlPw(v); }} placeholder="영문/숫자/특수문자만 입력"
+    style={{ width: "100%", padding: "12px 40px 12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#E8E4DC", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+  <span onClick={() => setShowPw(!showPw)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 14, color: "rgba(232,228,220,0.4)", userSelect: "none" }}>{showPw ? "🙈" : "👁"}</span>
+</div>
             </div>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 12, color: "rgba(232,228,220,0.5)", marginBottom: 6 }}>비밀번호 확인</div>
