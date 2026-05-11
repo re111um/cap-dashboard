@@ -15,7 +15,7 @@ const TABS = [
 
 /* ─── Helpers ─── */
 const fmt = v => `${Math.round(v/1e4).toLocaleString()}만원`;
-const fmtFull = v => `₩${v.toLocaleString()}`;
+const fmtFull = v => `${Math.round(v/1e4).toLocaleString()}만원`;
 const fmtM = v => `${Math.round(v/1e4).toLocaleString()}`;
 
 function parseMoney(s) {
@@ -200,7 +200,7 @@ function agg(field,order){
   else a.sort((a,b)=>b.total-a.total);return a
 }
 function fmtW(v){return Math.round(v/1e4).toLocaleString()+"만원"}
-function fmtF(v){return"₩"+v.toLocaleString()}
+function fmtF(v){return Math.round(v/1e4).toLocaleString()+"만원"}
 function fmtM(v){return Math.round(v/1e4).toLocaleString()}
 function colors(n){return Array.from({length:n},(_,i)=>"rgba(94,81,255,"+(1-i*(0.55/Math.max(n-1,1)))+")")}
 function render(){
