@@ -149,7 +149,8 @@ td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03)}
 <div class="brand">Featuring</div>
 <h1>연봉 대시보드</h1>
 <div class="sub">접근 권한이 필요합니다</div>
-<input type="password" id="pwInput" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')unlock()">
+<div style="position:relative"><input type="password" id="pwInput" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')unlock()" oninput="this.value=this.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\\-=\\[\\]{};':&quot;\\\\|,.<>/?\\x60~]/g,'')"><span onclick="var i=document.getElementById('pwInput');if(i.type==='password'){i.type='text';this.textContent='🙈'}else{i.type='password';this.textContent='👁'}" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:14px;color:rgba(232,228,220,0.4);user-select:none">👁</span></div>
+
 <div class="err-msg" id="errMsg" style="display:none">비밀번호가 일치하지 않습니다</div>
 <button onclick="unlock()">접속</button>
 </div>
@@ -471,9 +472,12 @@ export default function App() {
             </div>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 12, color: "rgba(232,228,220,0.5)", marginBottom: 6 }}>비밀번호 확인</div>
-              <input type="password" value={dlPwConfirm} onChange={e => setDlPwConfirm(e.target.value)} placeholder="비밀번호 재입력"
-                onKeyDown={e => e.key === "Enter" && dlPw && dlPw === dlPwConfirm && downloadHTML()}
-                style={{ width: "100%", padding: "12px 14px", background: "rgba(255,255,255,0.04)", border: `1px solid ${dlPwConfirm && dlPw !== dlPwConfirm ? "#E85454" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, color: "#E8E4DC", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+              <div style={{ position: "relative" }}>
+  <input type={showPwConfirm ? "text" : "password"} value={dlPwConfirm} onChange={e => { const v = e.target.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/g, ""); setDlPwConfirm(v); }} placeholder="비밀번호 재입력"
+    onKeyDown={e => e.key === "Enter" && dlPw && dlPw === dlPwConfirm && downloadHTML()}
+    style={{ width: "100%", padding: "12px 40px 12px 14px", background: "rgba(255,255,255,0.04)", border: `1px solid ${dlPwConfirm && dlPw !== dlPwConfirm ? "#E85454" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, color: "#E8E4DC", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+  <span onClick={() => setShowPwConfirm(!showPwConfirm)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 14, color: "rgba(232,228,220,0.4)", userSelect: "none" }}>{showPwConfirm ? "🙈" : "👁"}</span>
+</div>
               {dlPwConfirm && dlPw !== dlPwConfirm && <div style={{ color: "#E85454", fontSize: 12, marginTop: 6 }}>비밀번호가 일치하지 않습니다</div>}
             </div>
 
