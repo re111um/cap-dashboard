@@ -402,7 +402,6 @@ export default function App() {
   </div>
   <span>C-lv 제외</span>
 </label>
-                ))}
               </div>
             </div>
 
