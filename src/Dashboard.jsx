@@ -290,7 +290,7 @@ function render(){
       plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(15,18,30,0.96)",titleColor:"#fff",bodyColor:"#E8E4DC",borderColor:"rgba(94,81,255,0.25)",borderWidth:1,padding:14,titleFont:{size:14,weight:700},bodyFont:{size:13},
         callbacks:{label:function(c){const x=d[c.dataIndex];return["연봉 합계: "+fmtF(x.total),"평균 연봉: "+fmtF(x.avg),"인원: "+x.cnt+"명",...(x.ret>0?["리텐션/사이닝: "+fmtF(x.ret)]:[]),...(x.perf>0?["성과 인센티브: "+fmtF(x.perf)]:[])]}}}},
       scales:{x:{display:false},y:{grid:{display:false},ticks:{color:"rgba(232,228,220,0.7)",font:{size:13,weight:500}}}}}});
-  let hdr="<thead><tr><th class='al'>"+tab.label.replace("별","")+"</th><th class='ar'>인원</th><th class='ar'>인원 비율</th><th class='ar'>연봉 합계</th><th class='ar'>연봉 비율</th>"+(incRet?"<th class='ar'>리텐션/사이닝</th>":"")+(incPerf?"<th class='ar'>성과</th>":"")+"<th class='ar'>평균</th><th class='ar'>총합</th></tr></thead>";
+  let hdr="<thead><tr><th class='al'>"+tab.label.replace("별","")+"</th><th class='ar'>인원</th><th class='ar'>인원 비율</th><th class='ar'>연봉 합계</th><th class='ar'>연봉 비율</th>"+(incRet?"<th class='ar'>리텐션/사이닝</th>":"")+(incPerf?"<th class='ar'>성과</th>":"")+"<th class='ar'>평균 연봉</th><th class='ar'>총합</th></tr></thead>";
   let body="<tbody>"+d.map(x=>"<tr><td class='al fw'>"+x.name+"</td><td class='ar dim'>"+x.cnt+"명</td><td class='ar dim'>"+(totCnt?(x.cnt/totCnt*100).toFixed(1):0)+"%</td><td class='ar purple'>"+fmtM(x.base)+"</td><td class='ar dim'>"+(totS?(x.total/totS*100).toFixed(1):0)+"%</td>"+(incRet?"<td class='ar lpurple'>"+(x.ret>0?fmtM(x.ret):"-")+"</td>":"")+(incPerf?"<td class='ar lpurple'>"+(x.perf>0?fmtM(x.perf):"-")+"</td>":"")+"<td class='ar dim'>"+fmtM(x.avg)+"</td><td class='ar white'>"+fmtM(x.total)+"</td></tr>").join("")+"</tbody>";
   document.getElementById("dataTable").innerHTML=hdr+body
 }
@@ -495,7 +495,7 @@ export default function App() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                      {[currentTab.label.replace("별", ""), "인원", "인원 비율", "연봉 합계", "연봉 비율", ...(incRet ? ["리텐션/사이닝"] : []), ...(incPerf ? ["성과"] : []), "평균", "총합"].map((h, i) => (
+                      {[currentTab.label.replace("별", ""), "인원", "인원 비율", "연봉 합계", "연봉 비율", ...(incRet ? ["리텐션/사이닝"] : []), ...(incPerf ? ["성과"] : []), "평균 연봉", "총합"].map((h, i) => (
                         <th key={i} style={{ padding: "12px 16px", textAlign: i === 0 ? "left" : "right", color: "rgba(232,228,220,0.4)", fontWeight: 600, fontSize: 11, letterSpacing: 1 }}>{h}</th>
                       ))}
                     </tr>
