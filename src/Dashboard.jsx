@@ -208,7 +208,7 @@ function render(){
   const tab=TABS.find(t=>t.key===curTab);
   const d=agg(tab.field,tab.order);
   let totS=RAW.reduce((a,x)=>a+x.salary,0);if(incRet)totS+=RAW.reduce((a,x)=>a+x.incRet,0);if(incPerf)totS+=RAW.reduce((a,x)=>a+x.inc26,0);
-  const totR=RAW.reduce((a,x)=>a+x.incRet,0),totP=RAW.reduce((a,x)=>a+x.inc26,0);
+  const totR=RAW.reduce((a,x)=>a+x.incRet,0),totP=RAW.reduce((a,x)=>a+x.inc26,0),totCnt=RAW.length;
   document.getElementById("metaText").textContent="총 "+RAW.length+"명";
   document.getElementById("totalVal").textContent=fmtW(totS);
   document.getElementById("cards").innerHTML=[
@@ -250,19 +250,22 @@ export default function App() {
   const [dlPwConfirm, setDlPwConfirm] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [showPwConfirm, setShowPwConfirm] = useState(false);
+  const [hideClv, setHideClv] = useState(false);
 
   const currentTab = TABS.find(t => t.key === tab);
-  const chartData = useMemo(() => data.length ? aggregate(data, currentTab.field, incRet, incPerf, currentTab.order) : [], [data, tab, incRet, incPerf]);
+  const filtered = useMemo(() => hideClv ? data.filter(d => d.dept !== "C-lv") : data, [data, hideClv]);
+  const chartData = useMemo(() => filtered.length ? aggregate(filtered, currentTab.field, incRet, incPerf, currentTab.order) : [], [filtered, tab, incRet, incPerf]);
   const colors = useMemo(() => barColors(chartData.length), [chartData.length]);
 
   const totalSalary = useMemo(() => {
-    let s = data.reduce((a, d) => a + d.salary, 0);
-    if (incRet) s += data.reduce((a, d) => a + d.incRet, 0);
-    if (incPerf) s += data.reduce((a, d) => a + d.inc26, 0);
+    let s = filtered.reduce((a, d) => a + d.salary, 0);
+    if (incRet) s += filtered.reduce((a, d) => a + d.incRet, 0);
+    if (incPerf) s += filtered.reduce((a, d) => a + d.inc26, 0);
     return s;
-  }, [data, incRet, incPerf]);
-  const totalRetInc = useMemo(() => data.reduce((a, d) => a + d.incRet, 0), [data]);
-  const totalPerfInc = useMemo(() => data.reduce((a, d) => a + d.inc26, 0), [data]);
+  }, [filtered, incRet, incPerf]);
+  const totalRetInc = useMemo(() => filtered.reduce((a, d) => a + d.incRet, 0), [filtered]);
+  const totalPerfInc = useMemo(() => filtered.reduce((a, d) => a + d.inc26, 0), [filtered]);
+  const totalCount = useMemo(() => filtered.length, [filtered]);
 
   const handleFile = useCallback((file) => {
     if (!file) return;
@@ -286,7 +289,7 @@ export default function App() {
 
   const downloadHTML = () => {
     if (dlPw !== dlPwConfirm || !dlPw) return;
-    const html = generateHTML(data, dlPw);
+    const html = generateHTML(filtered, dlPw);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -365,7 +368,7 @@ export default function App() {
             {/* Cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 28 }}>
               {[
-                { l: "기본 연봉 총합", v: data.reduce((a, d) => a + d.salary, 0), c: BASE },
+                { l: "기본 연봉 총합", v: filtered.reduce((a, d) => a + d.salary, 0), c: BASE },
                 { l: "리텐션/사이닝 총합", v: totalRetInc, c: "#A89BFF" },
                 { l: "'26 1분기 성과 총합", v: totalPerfInc, c: "#C4B0FF" },
               ].map((c, i) => (
@@ -386,12 +389,19 @@ export default function App() {
                   { v: incRet, set: () => setIncRet(!incRet), l: "리텐션/사이닝", c: "#A89BFF" },
                   { v: incPerf, set: () => setIncPerf(!incPerf), l: "'26 1분기 성과", c: "#C4B0FF" },
                 ].map((c, i) => (
-                  <label key={i} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: c.v ? c.c : "rgba(232,228,220,0.45)" }}>
-                    <div onClick={c.set} style={S.chk(c.v, BASE)}>
-                      {c.v && <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-                    </div>
-                    <span>{c.l}</span>
-                  </label>
+  <label key={i} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: c.v ? c.c : "rgba(232,228,220,0.45)" }}>
+    <div onClick={c.set} style={S.chk(c.v, BASE)}>
+      {c.v && <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+    </div>
+    <span>{c.l}</span>
+  </label>
+))}
+<label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: hideClv ? "#E85454" : "rgba(232,228,220,0.45)", marginLeft: 8 }}>
+  <div onClick={() => setHideClv(!hideClv)} style={S.chk(hideClv, "#E85454")}>
+    {hideClv && <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+  </div>
+  <span>C-lv 제외</span>
+</label>
                 ))}
               </div>
             </div>
@@ -424,7 +434,7 @@ export default function App() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                      {[currentTab.label.replace("별", ""), "인원", "연봉 합계", ...(incRet ? ["리텐션/사이닝"] : []), ...(incPerf ? ["성과"] : []), "평균", "총합"].map((h, i) => (
+                      {[currentTab.label.replace("별", ""), "인원", "인원 비율", "연봉 합계", "연봉 비율", ...(incRet ? ["리텐션/사이닝"] : []), ...(incPerf ? ["성과"] : []), "평균", "총합"].map((h, i) => (
                         <th key={i} style={{ padding: "12px 16px", textAlign: i === 0 ? "left" : "right", color: "rgba(232,228,220,0.4)", fontWeight: 600, fontSize: 11, letterSpacing: 1 }}>{h}</th>
                       ))}
                     </tr>
@@ -433,8 +443,10 @@ export default function App() {
                     {chartData.map((d, i) => (
                       <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
                         <td style={{ padding: "12px 16px", fontWeight: 600, color: "#fff" }}>{d.name}</td>
-                        <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.6)" }}>{d.count}명</td>
+                         <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.6)" }}>{d.count}명</td>
+                        <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.4)" }}>{totalCount ? (d.count/totalCount*100).toFixed(1) : 0}%</td>
                         <td style={{ padding: "12px 16px", textAlign: "right", color: "#A89BFF" }}>{fmtM(d.baseSalary)}</td>
+                        <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.4)" }}>{totalSalary ? (d.total/totalSalary*100).toFixed(1) : 0}%</td>
                         {incRet && <td style={{ padding: "12px 16px", textAlign: "right", color: "#C4B0FF" }}>{d.retInc > 0 ? fmtM(d.retInc) : "-"}</td>}
                         {incPerf && <td style={{ padding: "12px 16px", textAlign: "right", color: "#C4B0FF" }}>{d.perfInc > 0 ? fmtM(d.perfInc) : "-"}</td>}
                         <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.6)" }}>{fmtM(d.avg)}</td>
