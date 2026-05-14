@@ -139,6 +139,8 @@ td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03)}
 .al{text-align:left}.ar{text-align:right}
 .fw{font-weight:600;color:#fff}.dim{color:rgba(232,228,220,0.6)}
 .purple{color:#A89BFF}.lpurple{color:#C4B0FF}.white{color:#fff;font-weight:700}
+.chk.red{color:#E85454}
+.chk.red .chk-box{background:#E85454;border:none}
 .footer{text-align:center;margin-top:32px;font-size:11px;color:rgba(232,228,220,0.2)}
 </style>
 </head>
@@ -167,6 +169,7 @@ td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03)}
 <div class="checks">
 <div class="chk" id="chkRet" onclick="toggleRet()"><div class="chk-box" id="chkRetBox"></div><span>리텐션/사이닝</span></div>
 <div class="chk" id="chkPerf" onclick="togglePerf()"><div class="chk-box" id="chkPerfBox"></div><span>'26 1분기 성과</span></div>
+<div class="chk" id="chkClv" onclick="toggleClv()" style="margin-left:8px"><div class="chk-box" id="chkClvBox"></div><span>C-lv 제외</span></div>
 </div>
 </div>
 <div class="panel"><h2 id="chartTitle"></h2><div class="desc" id="chartDesc"></div><div class="chart-wrap"><canvas id="mainChart"></canvas></div></div>
@@ -180,7 +183,7 @@ const RAW=${jsonData};
 const DEPT_ORDER=["C-lv","프로덕트본부","인플루언서비즈니스본부","세일즈&마케팅본부","경영관리본부"];
 const RANK_ORDER=["이사","팀장","사원"];
 const TABS=[{key:"dept",label:"본부별",field:"dept",order:DEPT_ORDER},{key:"team",label:"조직별",field:"team",order:null},{key:"rank",label:"직급별",field:"rank",order:RANK_ORDER},{key:"job",label:"직무별",field:"job",order:null}];
-let curTab="dept",incRet=false,incPerf=false,chart=null;
+let curTab="dept",incRet=false,incPerf=false,hideClv=false,chart=null;
 
 function unlock(){
   const v=document.getElementById("pwInput").value;
@@ -194,8 +197,10 @@ function buildTabs(){
 }
 function toggleRet(){incRet=!incRet;document.getElementById("chkRet").className="chk"+(incRet?" on":"");document.getElementById("chkRetBox").innerHTML=incRet?'<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>':"";render()}
 function togglePerf(){incPerf=!incPerf;document.getElementById("chkPerf").className="chk"+(incPerf?" on":"");document.getElementById("chkPerfBox").innerHTML=incPerf?'<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>':"";render()}
+function toggleClv(){hideClv=!hideClv;document.getElementById("chkClv").className="chk"+(hideClv?" red":"");document.getElementById("chkClvBox").innerHTML=hideClv?'<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>':"";render()}
 function agg(field,order){
-  const m={};RAW.forEach(d=>{const k=d[field]||"미지정";if(!m[k])m[k]={name:k,base:0,ret:0,perf:0,cnt:0};m[k].base+=d.salary;m[k].ret+=d.incRet;m[k].perf+=d.inc26;m[k].cnt++});
+  const src=hideClv?RAW.filter(d=>d.dept!=="C-lv"):RAW;
+  const m={};src.forEach(d=>{const k=d[field]||"미지정";if(!m[k])m[k]={name:k,base:0,ret:0,perf:0,cnt:0};m[k].base+=d.salary;m[k].ret+=d.incRet;m[k].perf+=d.inc26;m[k].cnt++});
   const a=Object.values(m).map(x=>({...x,total:x.base+(incRet?x.ret:0)+(incPerf?x.perf:0),avg:Math.round((x.base+(incRet?x.ret:0)+(incPerf?x.perf:0))/x.cnt)}));
   if(order)a.sort((a,b)=>{const ia=order.indexOf(a.name),ib=order.indexOf(b.name);if(ia>-1&&ib>-1)return ia-ib;if(ia>-1)return-1;if(ib>-1)return 1;return b.total-a.total});
   else a.sort((a,b)=>b.total-a.total);return a
@@ -207,12 +212,13 @@ function colors(n){return Array.from({length:n},(_,i)=>"rgba(94,81,255,"+(1-i*(0
 function render(){
   const tab=TABS.find(t=>t.key===curTab);
   const d=agg(tab.field,tab.order);
-  let totS=RAW.reduce((a,x)=>a+x.salary,0);if(incRet)totS+=RAW.reduce((a,x)=>a+x.incRet,0);if(incPerf)totS+=RAW.reduce((a,x)=>a+x.inc26,0);
-  const totR=RAW.reduce((a,x)=>a+x.incRet,0),totP=RAW.reduce((a,x)=>a+x.inc26,0),totCnt=RAW.length;
-  document.getElementById("metaText").textContent="총 "+RAW.length+"명";
+  const src=hideClv?RAW.filter(d=>d.dept!=="C-lv"):RAW;
+  let totS=src.reduce((a,x)=>a+x.salary,0);if(incRet)totS+=src.reduce((a,x)=>a+x.incRet,0);if(incPerf)totS+=src.reduce((a,x)=>a+x.inc26,0);
+  const totR=src.reduce((a,x)=>a+x.incRet,0),totP=src.reduce((a,x)=>a+x.inc26,0),totCnt=src.length;
+  document.getElementById("metaText").textContent="총 "+src.length+"명";
   document.getElementById("totalVal").textContent=fmtW(totS);
   document.getElementById("cards").innerHTML=[
-    {l:"기본 연봉 총합",v:RAW.reduce((a,x)=>a+x.salary,0),c:"#5E51FF"},
+    {l:"기본 연봉 총합",v:src.reduce((a,x)=>a+x.salary,0),c:"#5E51FF"},
     {l:"리텐션/사이닝 총합",v:totR,c:"#A89BFF"},
     {l:"'26 1분기 성과 총합",v:totP,c:"#C4B0FF"}
   ].map(c=>'<div class="card"><div class="label">'+c.l+'</div><div class="val" style="color:'+c.c+'">'+fmtF(c.v)+'</div></div>').join("");
@@ -228,8 +234,8 @@ function render(){
       plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(15,18,30,0.96)",titleColor:"#fff",bodyColor:"#E8E4DC",borderColor:"rgba(94,81,255,0.25)",borderWidth:1,padding:14,titleFont:{size:14,weight:700},bodyFont:{size:13},
         callbacks:{label:function(c){const x=d[c.dataIndex];return["연봉 합계: "+fmtF(x.total),"평균 연봉: "+fmtF(x.avg),"인원: "+x.cnt+"명",...(x.ret>0?["리텐션/사이닝: "+fmtF(x.ret)]:[]),...(x.perf>0?["성과 인센티브: "+fmtF(x.perf)]:[])]}}}},
       scales:{x:{display:false},y:{grid:{display:false},ticks:{color:"rgba(232,228,220,0.7)",font:{size:13,weight:500}}}}}});
-  let hdr="<thead><tr><th class='al'>"+tab.label.replace("별","")+"</th><th class='ar'>인원</th><th class='ar'>연봉 합계</th>"+(incRet?"<th class='ar'>리텐션/사이닝</th>":"")+(incPerf?"<th class='ar'>성과</th>":"")+"<th class='ar'>평균</th><th class='ar'>총합</th></tr></thead>";
-  let body="<tbody>"+d.map(x=>"<tr><td class='al fw'>"+x.name+"</td><td class='ar dim'>"+x.cnt+"명</td><td class='ar purple'>"+fmtM(x.base)+"</td>"+(incRet?"<td class='ar lpurple'>"+(x.ret>0?fmtM(x.ret):"-")+"</td>":"")+(incPerf?"<td class='ar lpurple'>"+(x.perf>0?fmtM(x.perf):"-")+"</td>":"")+"<td class='ar dim'>"+fmtM(x.avg)+"</td><td class='ar white'>"+fmtM(x.total)+"</td></tr>").join("")+"</tbody>";
+  let hdr="<thead><tr><th class='al'>"+tab.label.replace("별","")+"</th><th class='ar'>인원</th><th class='ar'>인원 비율</th><th class='ar'>연봉 합계</th><th class='ar'>연봉 비율</th>"+(incRet?"<th class='ar'>리텐션/사이닝</th>":"")+(incPerf?"<th class='ar'>성과</th>":"")+"<th class='ar'>평균</th><th class='ar'>총합</th></tr></thead>";
+  let body="<tbody>"+d.map(x=>"<tr><td class='al fw'>"+x.name+"</td><td class='ar dim'>"+x.cnt+"명</td><td class='ar dim'>"+(totCnt?(x.cnt/totCnt*100).toFixed(1):0)+"%</td><td class='ar purple'>"+fmtM(x.base)+"</td><td class='ar dim'>"+(totS?(x.total/totS*100).toFixed(1):0)+"%</td>"+(incRet?"<td class='ar lpurple'>"+(x.ret>0?fmtM(x.ret):"-")+"</td>":"")+(incPerf?"<td class='ar lpurple'>"+(x.perf>0?fmtM(x.perf):"-")+"</td>":"")+"<td class='ar dim'>"+fmtM(x.avg)+"</td><td class='ar white'>"+fmtM(x.total)+"</td></tr>").join("")+"</tbody>";
   document.getElementById("dataTable").innerHTML=hdr+body
 }
 <\/script>
