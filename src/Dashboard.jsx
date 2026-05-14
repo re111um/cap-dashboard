@@ -84,9 +84,32 @@ const Tip=({active,payload,label})=>{
   );
 };
 
-/* ─── HTML Generator ─── */
-function generateHTML(data, password) {
-  const jsonData = JSON.stringify(data);
+async function generateHTML(data, password) {
+  // ── 브라우저 Web Crypto API로 데이터 암호화 ──
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+ 
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]
+  );
+  const key = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"]
+  );
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv }, key, enc.encode(JSON.stringify(data))
+  );
+ 
+  const combined = new Uint8Array(salt.length + iv.length + new Uint8Array(encrypted).length);
+  combined.set(salt);
+  combined.set(iv, salt.length);
+  combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+  const encryptedB64 = btoa(String.fromCharCode(...combined));
+ 
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -102,11 +125,13 @@ body{font-family:'Noto Sans KR',sans-serif;background:linear-gradient(160deg,#0A
 .lock-box .brand{font-size:11px;letter-spacing:4px;color:#5E51FF;text-transform:uppercase;font-weight:600;margin-bottom:8px}
 .lock-box h1{font-size:22px;font-weight:800;margin-bottom:6px}
 .lock-box .sub{font-size:13px;color:rgba(232,228,220,0.4);margin-bottom:32px}
-.lock-box input{width:100%;padding:14px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:#E8E4DC;font-size:14px;outline:none}
+.lock-box input{width:100%;padding:14px 40px 14px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:#E8E4DC;font-size:14px;outline:none}
 .lock-box input.err{border-color:#E85454}
 .lock-box .err-msg{color:#E85454;font-size:12px;margin-top:8px}
 .lock-box button{margin-top:20px;width:100%;padding:14px;background:linear-gradient(135deg,#5E51FF,#7B6FFF);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer}
 .lock-box button:hover{opacity:0.9}
+.pw-wrap{position:relative}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:14px;color:rgba(232,228,220,0.4);user-select:none}
 #app{display:none;max-width:960px;margin:0 auto;padding:32px 24px}
 .header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;flex-wrap:wrap;gap:16px}
 .brand-sm{font-size:11px;letter-spacing:4px;color:#5E51FF;text-transform:uppercase;font-weight:600;margin-bottom:4px}
@@ -125,8 +150,10 @@ h1{font-size:28px;font-weight:800;color:#fff}
 .checks{display:flex;gap:16px;align-items:center}
 .chk{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:rgba(232,228,220,0.45)}
 .chk.on{color:#A89BFF}
+.chk.red{color:#E85454}
 .chk-box{width:18px;height:18px;border-radius:4px;border:1.5px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
 .chk.on .chk-box{background:#5E51FF;border:none}
+.chk.red .chk-box{background:#E85454;border:none}
 .panel{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:16px;padding:28px 20px 16px}
 .panel h2{font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;padding-left:8px}
 .panel .desc{font-size:12px;color:rgba(232,228,220,0.35);margin-bottom:20px;padding-left:8px}
@@ -139,25 +166,27 @@ td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03)}
 .al{text-align:left}.ar{text-align:right}
 .fw{font-weight:600;color:#fff}.dim{color:rgba(232,228,220,0.6)}
 .purple{color:#A89BFF}.lpurple{color:#C4B0FF}.white{color:#fff;font-weight:700}
-.chk.red{color:#E85454}
-.chk.red .chk-box{background:#E85454;border:none}
 .footer{text-align:center;margin-top:32px;font-size:11px;color:rgba(232,228,220,0.2)}
+.loading{color:rgba(232,228,220,0.5);font-size:13px;margin-top:8px}
 </style>
 </head>
 <body>
-
+ 
 <div class="lock" id="lockScreen">
 <div class="lock-box">
 <div class="brand">Featuring</div>
 <h1>연봉 대시보드</h1>
 <div class="sub">접근 권한이 필요합니다</div>
-<div style="position:relative"><input type="password" id="pwInput" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')unlock()" oninput="this.value=this.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\\-=\\[\\]{};':&quot;\\\\|,.<>/?\\x60~]/g,'')"><span onclick="var i=document.getElementById('pwInput');if(i.type==='password'){i.type='text';this.textContent='🙈'}else{i.type='password';this.textContent='👁'}" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:14px;color:rgba(232,228,220,0.4);user-select:none">👁</span></div>
-
+<div class="pw-wrap">
+<input type="password" id="pwInput" placeholder="비밀번호 입력" oninput="this.value=this.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\\-=\\[\\]{};':&quot;\\\\|,.<>/?\\x60~]/g,'')" onkeydown="if(event.key==='Enter')unlock()">
+<span class="pw-toggle" onclick="var i=document.getElementById('pwInput');if(i.type==='password'){i.type='text';this.textContent='🙈'}else{i.type='password';this.textContent='👁'}">👁</span>
+</div>
 <div class="err-msg" id="errMsg" style="display:none">비밀번호가 일치하지 않습니다</div>
+<div class="loading" id="loadingMsg" style="display:none">복호화 중...</div>
 <button onclick="unlock()">접속</button>
 </div>
 </div>
-
+ 
 <div id="app">
 <div class="header">
 <div><div class="brand-sm">Featuring</div><h1>연봉 대시보드</h1><div class="meta" id="metaText"></div></div>
@@ -176,28 +205,54 @@ td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03)}
 <div class="tbl-wrap"><div class="tbl-head">상세 데이터 <span style="font-weight:400;font-size:12px;color:rgba(232,228,220,0.35)">(단위: 만원)</span></div><div style="overflow-x:auto"><table id="dataTable"></table></div></div>
 <div class="footer">Confidential · Featuring Inc. · 의사결정권자 전용</div>
 </div>
-
+ 
 <script>
-const PASS=${JSON.stringify(password)};
-const RAW=${jsonData};
+const ENCRYPTED_DATA="${encryptedB64}";
+let RAW=null;
 const DEPT_ORDER=["C-lv","프로덕트본부","인플루언서비즈니스본부","세일즈&마케팅본부","경영관리본부"];
 const RANK_ORDER=["이사","팀장","사원"];
 const TABS=[{key:"dept",label:"본부별",field:"dept",order:DEPT_ORDER},{key:"team",label:"조직별",field:"team",order:null},{key:"rank",label:"직급별",field:"rank",order:RANK_ORDER},{key:"job",label:"직무별",field:"job",order:null}];
 let curTab="dept",incRet=false,incPerf=false,hideClv=false,chart=null;
-
-function unlock(){
-  const v=document.getElementById("pwInput").value;
-  if(v===PASS){document.getElementById("lockScreen").style.display="none";document.getElementById("app").style.display="block";init()}
-  else{document.getElementById("pwInput").classList.add("err");document.getElementById("errMsg").style.display="block"}
+ 
+async function decrypt(pw){
+  try{
+    const enc=new TextEncoder();
+    const raw=Uint8Array.from(atob(ENCRYPTED_DATA),c=>c.charCodeAt(0));
+    const salt=raw.slice(0,16),iv=raw.slice(16,28),ct=raw.slice(28);
+    const km=await crypto.subtle.importKey("raw",enc.encode(pw),"PBKDF2",false,["deriveKey"]);
+    const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:100000,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["decrypt"]);
+    const dec=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,ct);
+    return JSON.parse(new TextDecoder().decode(dec));
+  }catch(e){return null}
 }
+ 
+async function unlock(){
+  const pw=document.getElementById("pwInput").value;
+  document.getElementById("errMsg").style.display="none";
+  document.getElementById("loadingMsg").style.display="block";
+  const result=await decrypt(pw);
+  document.getElementById("loadingMsg").style.display="none";
+  if(result){
+    RAW=result;
+    document.getElementById("lockScreen").style.display="none";
+    document.getElementById("app").style.display="block";
+    init();
+  }else{
+    document.getElementById("pwInput").classList.add("err");
+    document.getElementById("errMsg").style.display="block";
+  }
+}
+ 
 function init(){buildTabs();render()}
 function buildTabs(){
   const bar=document.getElementById("tabBar");bar.innerHTML="";
   TABS.forEach(t=>{const b=document.createElement("button");b.className="tab"+(t.key===curTab?" on":"");b.textContent=t.label;b.onclick=()=>{curTab=t.key;buildTabs();render()};bar.appendChild(b)})
 }
-function toggleRet(){incRet=!incRet;document.getElementById("chkRet").className="chk"+(incRet?" on":"");document.getElementById("chkRetBox").innerHTML=incRet?'<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>':"";render()}
-function togglePerf(){incPerf=!incPerf;document.getElementById("chkPerf").className="chk"+(incPerf?" on":"");document.getElementById("chkPerfBox").innerHTML=incPerf?'<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>':"";render()}
-function toggleClv(){hideClv=!hideClv;document.getElementById("chkClv").className="chk"+(hideClv?" red":"");document.getElementById("chkClvBox").innerHTML=hideClv?'<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>':"";render()}
+const CHK_SVG='<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function toggleRet(){incRet=!incRet;document.getElementById("chkRet").className="chk"+(incRet?" on":"");document.getElementById("chkRetBox").innerHTML=incRet?CHK_SVG:"";render()}
+function togglePerf(){incPerf=!incPerf;document.getElementById("chkPerf").className="chk"+(incPerf?" on":"");document.getElementById("chkPerfBox").innerHTML=incPerf?CHK_SVG:"";render()}
+function toggleClv(){hideClv=!hideClv;document.getElementById("chkClv").className="chk"+(hideClv?" red":"");document.getElementById("chkClvBox").innerHTML=hideClv?CHK_SVG:"";render()}
+ 
 function agg(field,order){
   const src=hideClv?RAW.filter(d=>d.dept!=="C-lv"):RAW;
   const m={};src.forEach(d=>{const k=d[field]||"미지정";if(!m[k])m[k]={name:k,base:0,ret:0,perf:0,cnt:0};m[k].base+=d.salary;m[k].ret+=d.incRet;m[k].perf+=d.inc26;m[k].cnt++});
@@ -209,10 +264,11 @@ function fmtW(v){return Math.round(v/1e4).toLocaleString()+"만원"}
 function fmtF(v){return Math.round(v/1e4).toLocaleString()+"만원"}
 function fmtM(v){return Math.round(v/1e4).toLocaleString()}
 function colors(n){return Array.from({length:n},(_,i)=>"rgba(94,81,255,"+(1-i*(0.55/Math.max(n-1,1)))+")")}
+ 
 function render(){
   const tab=TABS.find(t=>t.key===curTab);
   const d=agg(tab.field,tab.order);
-  const src=hideClv?RAW.filter(d=>d.dept!=="C-lv"):RAW;
+  const src=hideClv?RAW.filter(x=>x.dept!=="C-lv"):RAW;
   let totS=src.reduce((a,x)=>a+x.salary,0);if(incRet)totS+=src.reduce((a,x)=>a+x.incRet,0);if(incPerf)totS+=src.reduce((a,x)=>a+x.inc26,0);
   const totR=src.reduce((a,x)=>a+x.incRet,0),totP=src.reduce((a,x)=>a+x.inc26,0),totCnt=src.length;
   document.getElementById("metaText").textContent="총 "+src.length+"명";
@@ -293,9 +349,9 @@ export default function App() {
     else setUploadMsg({ t: "err", m: "CSV 파일만 업로드 가능합니다." });
   }, [handleFile]);
 
-  const downloadHTML = () => {
+  const downloadHTML = async () => {
     if (dlPw !== dlPwConfirm || !dlPw) return;
-    const html = generateHTML(filtered, dlPw);
+    const html = await generateHTML(filtered, dlPw);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
