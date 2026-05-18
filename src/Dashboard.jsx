@@ -339,15 +339,27 @@ export default function App() {
 
   const handleFile = useCallback((file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const parsed = parseCSV(e.target.result);
-      if (!parsed.length) { setUploadMsg({ t: "err", m: "유효한 데이터를 찾을 수 없습니다." }); return; }
-      setData(parsed);
-      setUploadMsg({ t: "ok", m: `${parsed.length}명 데이터 반영 완료` });
-      setTimeout(() => setUploadMsg(null), 3000);
+    const tryParse = (text) => {
+      const parsed = parseCSV(text);
+      if (parsed.length) {
+        setData(parsed);
+        setUploadMsg({ t: "ok", m: `${parsed.length}명 데이터 반영 완료` });
+        setTimeout(() => setUploadMsg(null), 3000);
+        return true;
+      }
+      return false;
     };
-    reader.readAsText(file, "UTF-8");
+    const r1 = new FileReader();
+    r1.onload = (e) => {
+      if (tryParse(e.target.result)) return;
+      const r2 = new FileReader();
+      r2.onload = (e2) => {
+        if (tryParse(e2.target.result)) return;
+        setUploadMsg({ t: "err", m: "유효한 데이터를 찾을 수 없습니다. 인코딩 또는 칼럼명을 확인해주세요." });
+      };
+      r2.readAsText(file, "euc-kr");
+    };
+    r1.readAsText(file, "UTF-8");
   }, []);
 
   const handleDrop = useCallback((e) => {
