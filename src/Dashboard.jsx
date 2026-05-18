@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 /* ─── Constants ─── */
@@ -66,9 +66,28 @@ function aggregate(data,key,incR,incP,order){
   return arr;
 }
 
+function computeDistribution(data, key, incR, incP, order) {
+  const groups = {};
+  data.forEach(d => {
+    const k = d[key] || "미지정";
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(d.salary + (incR ? d.incRet : 0) + (incP ? d.inc26 : 0));
+  });
+  const arr = Object.entries(groups).map(([name, vals]) => {
+    vals.sort((a, b) => a - b);
+    const len = vals.length;
+    const mid = Math.floor(len / 2);
+    const median = len % 2 ? vals[mid] : Math.round((vals[mid - 1] + vals[mid]) / 2);
+    return { name, min: vals[0], median, max: vals[len - 1], count: len };
+  });
+  if (order) arr.sort((a, b) => { const ia = order.indexOf(a.name), ib = order.indexOf(b.name); if (ia !== -1 && ib !== -1) return ia - ib; if (ia !== -1) return -1; if (ib !== -1) return 1; return b.median - a.median; });
+  else arr.sort((a, b) => b.median - a.median);
+  return arr;
+}
+
 function barColors(n){ return Array.from({length:n},(_,i)=>opacity(1-i*(0.55/Math.max(n-1,1)))); }
 
-/* ─── Tooltip ─── */
+/* ─── Tooltips ─── */
 const Tip=({active,payload,label})=>{
   if(!active||!payload?.length) return null;
   const d=payload[0].payload;
@@ -84,32 +103,60 @@ const Tip=({active,payload,label})=>{
   );
 };
 
+/* ─── Range Chart Component ─── */
+function RangeChart({ distData }) {
+  if (!distData.length) return null;
+  const globalMax = Math.max(...distData.map(d => d.max));
+  const pct = v => globalMax > 0 ? (v / globalMax) * 100 : 0;
+  const [hover, setHover] = useState(null);
+
+  return (
+    <div style={{ padding: "0 8px" }}>
+      <div style={{ display: "flex", gap: 16, marginBottom: 16, justifyContent: "flex-end" }}>
+        {[{ label: "최저", color: "#E85454" }, { label: "중간값", color: "#4AC978" }, { label: "최고", color: "#5E51FF" }].map((l, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(232,228,220,0.45)" }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: l.color }} />
+            {l.label}
+          </div>
+        ))}
+      </div>
+      {distData.map((d, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", height: 44, position: "relative" }}
+          onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+          <div style={{ width: 140, flexShrink: 0, textAlign: "right", paddingRight: 14, fontSize: 13, fontWeight: 500, color: "rgba(232,228,220,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+          <div style={{ flex: 1, position: "relative", height: 20 }}>
+            <div style={{ position: "absolute", left: `${pct(d.min)}%`, width: `${pct(d.max) - pct(d.min)}%`, top: 9, height: 2, background: "rgba(255,255,255,0.12)", borderRadius: 1 }} />
+            <div style={{ position: "absolute", left: `${pct(d.min)}%`, top: 5, width: 10, height: 10, borderRadius: "50%", background: "#E85454", transform: "translateX(-50%)", transition: "transform .15s", ...(hover === i && { transform: "translateX(-50%) scale(1.3)" }) }} />
+            <div style={{ position: "absolute", left: `${pct(d.median)}%`, top: 4, width: 12, height: 12, borderRadius: "50%", background: "#4AC978", transform: "translateX(-50%)", border: "2px solid rgba(15,18,30,0.8)", transition: "transform .15s", ...(hover === i && { transform: "translateX(-50%) scale(1.3)" }) }} />
+            <div style={{ position: "absolute", left: `${pct(d.max)}%`, top: 5, width: 10, height: 10, borderRadius: "50%", background: "#5E51FF", transform: "translateX(-50%)", transition: "transform .15s", ...(hover === i && { transform: "translateX(-50%) scale(1.3)" }) }} />
+          </div>
+          {hover === i && (
+            <div style={{ position: "absolute", right: 0, top: -36, background: "rgba(15,18,30,0.96)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "#E8E4DC", whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none" }}>
+              <span style={{ color: "#E85454" }}>{fmtFull(d.min)}</span>
+              {" / "}
+              <span style={{ color: "#4AC978" }}>{fmtFull(d.median)}</span>
+              {" / "}
+             <span style={{ color: "#5E51FF" }}>{fmtFull(d.max)}</span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── HTML Generator (AES-256-GCM encrypted) ─── */
 async function generateHTML(data, password) {
-  // ── 브라우저 Web Crypto API로 데이터 암호화 ──
   const enc = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
- 
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]
-  );
-  const key = await crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt"]
-  );
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv }, key, enc.encode(JSON.stringify(data))
-  );
- 
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(JSON.stringify(data)));
   const combined = new Uint8Array(salt.length + iv.length + new Uint8Array(encrypted).length);
-  combined.set(salt);
-  combined.set(iv, salt.length);
-  combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+  combined.set(salt); combined.set(iv, salt.length); combined.set(new Uint8Array(encrypted), salt.length + iv.length);
   const encryptedB64 = btoa(String.fromCharCode(...combined));
- 
+
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -154,11 +201,11 @@ h1{font-size:28px;font-weight:800;color:#fff}
 .chk-box{width:18px;height:18px;border-radius:4px;border:1.5px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
 .chk.on .chk-box{background:#5E51FF;border:none}
 .chk.red .chk-box{background:#E85454;border:none}
-.panel{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:16px;padding:28px 20px 16px}
+.panel{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:16px;padding:28px 20px 16px;margin-bottom:20px}
 .panel h2{font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;padding-left:8px}
 .panel .desc{font-size:12px;color:rgba(232,228,220,0.35);margin-bottom:20px;padding-left:8px}
 .chart-wrap{position:relative;width:100%}
-.tbl-wrap{margin-top:20px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:16px;overflow:hidden}
+.tbl-wrap{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:16px;overflow:hidden}
 .tbl-head{padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;font-weight:700;color:#fff}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{padding:12px 16px;color:rgba(232,228,220,0.4);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid rgba(255,255,255,0.06)}
@@ -166,16 +213,18 @@ td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03)}
 .al{text-align:left}.ar{text-align:right}
 .fw{font-weight:600;color:#fff}.dim{color:rgba(232,228,220,0.6)}
 .purple{color:#A89BFF}.lpurple{color:#C4B0FF}.white{color:#fff;font-weight:700}
+.red{color:#E85454}.green{color:#4AC978}.lgray{color:#5E51FF}
 .footer{text-align:center;margin-top:32px;font-size:11px;color:rgba(232,228,220,0.2)}
 .loading{color:rgba(232,228,220,0.5);font-size:13px;margin-top:8px}
+.legend{display:flex;gap:16px;justify-content:flex-end;margin-bottom:12px}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:rgba(232,228,220,0.45)}
+.legend-dot{width:8px;height:8px;border-radius:50%}
 </style>
 </head>
 <body>
- 
 <div class="lock" id="lockScreen">
 <div class="lock-box">
-<div class="brand">Featuring</div>
-<h1>연봉 대시보드</h1>
+<div class="brand">Featuring</div><h1>연봉 대시보드</h1>
 <div class="sub">접근 권한이 필요합니다</div>
 <div class="pw-wrap">
 <input type="password" id="pwInput" placeholder="비밀번호 입력" oninput="this.value=this.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\\-=\\[\\]{};':&quot;\\\\|,.<>/?\\x60~]/g,'')" onkeydown="if(event.key==='Enter')unlock()">
@@ -184,119 +233,67 @@ td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03)}
 <div class="err-msg" id="errMsg" style="display:none">비밀번호가 일치하지 않습니다</div>
 <div class="loading" id="loadingMsg" style="display:none">복호화 중...</div>
 <button onclick="unlock()">접속</button>
-</div>
-</div>
- 
+</div></div>
 <div id="app">
-<div class="header">
-<div><div class="brand-sm">Featuring</div><h1>연봉 대시보드</h1><div class="meta" id="metaText"></div></div>
-<div style="text-align:right"><div class="total-label">총 연봉 합계</div><div class="total-val" id="totalVal"></div></div>
-</div>
+<div class="header"><div><div class="brand-sm">Featuring</div><h1>연봉 대시보드</h1><div class="meta" id="metaText"></div></div>
+<div style="text-align:right"><div class="total-label">총 연봉 합계</div><div class="total-val" id="totalVal"></div></div></div>
 <div class="cards" id="cards"></div>
-<div class="controls">
-<div class="tabs" id="tabBar"></div>
+<div class="controls"><div class="tabs" id="tabBar"></div>
 <div class="checks">
 <div class="chk" id="chkRet" onclick="toggleRet()"><div class="chk-box" id="chkRetBox"></div><span>리텐션/사이닝</span></div>
 <div class="chk" id="chkPerf" onclick="togglePerf()"><div class="chk-box" id="chkPerfBox"></div><span>'26 1분기 성과</span></div>
 <div class="chk" id="chkClv" onclick="toggleClv()" style="margin-left:8px"><div class="chk-box" id="chkClvBox"></div><span>C-lv 제외</span></div>
-</div>
-</div>
+</div></div>
 <div class="panel"><h2 id="chartTitle"></h2><div class="desc" id="chartDesc"></div><div class="chart-wrap"><canvas id="mainChart"></canvas></div></div>
+<div class="panel"><h2 id="distTitle"></h2><div class="desc">개인 연봉 기준 최저 / 중간값 / 최고</div><div class="chart-wrap"><canvas id="distChart"></canvas></div></div>
 <div class="tbl-wrap"><div class="tbl-head">상세 데이터 <span style="font-weight:400;font-size:12px;color:rgba(232,228,220,0.35)">(단위: 만원)</span></div><div style="overflow-x:auto"><table id="dataTable"></table></div></div>
 <div class="footer">Confidential · Featuring Inc. · 의사결정권자 전용</div>
 </div>
- 
 <script>
 const ENCRYPTED_DATA="${encryptedB64}";
 let RAW=null;
 const DEPT_ORDER=["C-lv","프로덕트본부","인플루언서비즈니스본부","세일즈&마케팅본부","경영관리본부"];
 const RANK_ORDER=["이사","팀장","사원"];
 const TABS=[{key:"dept",label:"본부별",field:"dept",order:DEPT_ORDER},{key:"team",label:"조직별",field:"team",order:null},{key:"rank",label:"직급별",field:"rank",order:RANK_ORDER},{key:"job",label:"직무별",field:"job",order:null}];
-let curTab="dept",incRet=false,incPerf=false,hideClv=false,chart=null;
- 
-async function decrypt(pw){
-  try{
-    const enc=new TextEncoder();
-    const raw=Uint8Array.from(atob(ENCRYPTED_DATA),c=>c.charCodeAt(0));
-    const salt=raw.slice(0,16),iv=raw.slice(16,28),ct=raw.slice(28);
-    const km=await crypto.subtle.importKey("raw",enc.encode(pw),"PBKDF2",false,["deriveKey"]);
-    const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:100000,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["decrypt"]);
-    const dec=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,ct);
-    return JSON.parse(new TextDecoder().decode(dec));
-  }catch(e){return null}
-}
- 
-async function unlock(){
-  const pw=document.getElementById("pwInput").value;
-  document.getElementById("errMsg").style.display="none";
-  document.getElementById("loadingMsg").style.display="block";
-  const result=await decrypt(pw);
-  document.getElementById("loadingMsg").style.display="none";
-  if(result){
-    RAW=result;
-    document.getElementById("lockScreen").style.display="none";
-    document.getElementById("app").style.display="block";
-    init();
-  }else{
-    document.getElementById("pwInput").classList.add("err");
-    document.getElementById("errMsg").style.display="block";
-  }
-}
- 
+let curTab="dept",incRet=false,incPerf=false,hideClv=false,chart=null,distChartObj=null;
+async function decrypt(pw){try{const enc=new TextEncoder();const raw=Uint8Array.from(atob(ENCRYPTED_DATA),c=>c.charCodeAt(0));const salt=raw.slice(0,16),iv=raw.slice(16,28),ct=raw.slice(28);const km=await crypto.subtle.importKey("raw",enc.encode(pw),"PBKDF2",false,["deriveKey"]);const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:100000,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["decrypt"]);const dec=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,ct);return JSON.parse(new TextDecoder().decode(dec))}catch(e){return null}}
+async function unlock(){const pw=document.getElementById("pwInput").value;document.getElementById("errMsg").style.display="none";document.getElementById("loadingMsg").style.display="block";const result=await decrypt(pw);document.getElementById("loadingMsg").style.display="none";if(result){RAW=result;document.getElementById("lockScreen").style.display="none";document.getElementById("app").style.display="block";init()}else{document.getElementById("pwInput").classList.add("err");document.getElementById("errMsg").style.display="block"}}
 function init(){buildTabs();render()}
-function buildTabs(){
-  const bar=document.getElementById("tabBar");bar.innerHTML="";
-  TABS.forEach(t=>{const b=document.createElement("button");b.className="tab"+(t.key===curTab?" on":"");b.textContent=t.label;b.onclick=()=>{curTab=t.key;buildTabs();render()};bar.appendChild(b)})
-}
+function buildTabs(){const bar=document.getElementById("tabBar");bar.innerHTML="";TABS.forEach(t=>{const b=document.createElement("button");b.className="tab"+(t.key===curTab?" on":"");b.textContent=t.label;b.onclick=()=>{curTab=t.key;buildTabs();render()};bar.appendChild(b)})}
 const CHK_SVG='<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function toggleRet(){incRet=!incRet;document.getElementById("chkRet").className="chk"+(incRet?" on":"");document.getElementById("chkRetBox").innerHTML=incRet?CHK_SVG:"";render()}
 function togglePerf(){incPerf=!incPerf;document.getElementById("chkPerf").className="chk"+(incPerf?" on":"");document.getElementById("chkPerfBox").innerHTML=incPerf?CHK_SVG:"";render()}
 function toggleClv(){hideClv=!hideClv;document.getElementById("chkClv").className="chk"+(hideClv?" red":"");document.getElementById("chkClvBox").innerHTML=hideClv?CHK_SVG:"";render()}
- 
-function agg(field,order){
-  const src=hideClv?RAW.filter(d=>d.dept!=="C-lv"):RAW;
-  const m={};src.forEach(d=>{const k=d[field]||"미지정";if(!m[k])m[k]={name:k,base:0,ret:0,perf:0,cnt:0};m[k].base+=d.salary;m[k].ret+=d.incRet;m[k].perf+=d.inc26;m[k].cnt++});
-  const a=Object.values(m).map(x=>({...x,total:x.base+(incRet?x.ret:0)+(incPerf?x.perf:0),avg:Math.round((x.base+(incRet?x.ret:0)+(incPerf?x.perf:0))/x.cnt)}));
-  if(order)a.sort((a,b)=>{const ia=order.indexOf(a.name),ib=order.indexOf(b.name);if(ia>-1&&ib>-1)return ia-ib;if(ia>-1)return-1;if(ib>-1)return 1;return b.total-a.total});
-  else a.sort((a,b)=>b.total-a.total);return a
-}
+function getSrc(){return hideClv?RAW.filter(d=>d.dept!=="C-lv"):RAW}
+function agg(field,order){const src=getSrc();const m={};src.forEach(d=>{const k=d[field]||"미지정";if(!m[k])m[k]={name:k,base:0,ret:0,perf:0,cnt:0};m[k].base+=d.salary;m[k].ret+=d.incRet;m[k].perf+=d.inc26;m[k].cnt++});const a=Object.values(m).map(x=>({...x,total:x.base+(incRet?x.ret:0)+(incPerf?x.perf:0),avg:Math.round((x.base+(incRet?x.ret:0)+(incPerf?x.perf:0))/x.cnt)}));if(order)a.sort((a,b)=>{const ia=order.indexOf(a.name),ib=order.indexOf(b.name);if(ia>-1&&ib>-1)return ia-ib;if(ia>-1)return-1;if(ib>-1)return 1;return b.total-a.total});else a.sort((a,b)=>b.total-a.total);return a}
+function dist(field,order){const src=getSrc();const g={};src.forEach(d=>{const k=d[field]||"미지정";if(!g[k])g[k]=[];g[k].push(d.salary+(incRet?d.incRet:0)+(incPerf?d.inc26:0))});const a=Object.entries(g).map(([n,v])=>{v.sort((a,b)=>a-b);const l=v.length,m=Math.floor(l/2),med=l%2?v[m]:Math.round((v[m-1]+v[m])/2);return{name:n,min:v[0],median:med,max:v[l-1],cnt:l}});if(order)a.sort((a,b)=>{const ia=order.indexOf(a.name),ib=order.indexOf(b.name);if(ia>-1&&ib>-1)return ia-ib;if(ia>-1)return-1;if(ib>-1)return 1;return b.median-a.median});else a.sort((a,b)=>b.median-a.median);return a}
 function fmtW(v){return Math.round(v/1e4).toLocaleString()+"만원"}
 function fmtF(v){return Math.round(v/1e4).toLocaleString()+"만원"}
 function fmtM(v){return Math.round(v/1e4).toLocaleString()}
 function colors(n){return Array.from({length:n},(_,i)=>"rgba(94,81,255,"+(1-i*(0.55/Math.max(n-1,1)))+")")}
- 
 function render(){
-  const tab=TABS.find(t=>t.key===curTab);
-  const d=agg(tab.field,tab.order);
-  const src=hideClv?RAW.filter(x=>x.dept!=="C-lv"):RAW;
+  const tab=TABS.find(t=>t.key===curTab);const d=agg(tab.field,tab.order);const dd=dist(tab.field,tab.order);const src=getSrc();
   let totS=src.reduce((a,x)=>a+x.salary,0);if(incRet)totS+=src.reduce((a,x)=>a+x.incRet,0);if(incPerf)totS+=src.reduce((a,x)=>a+x.inc26,0);
   const totR=src.reduce((a,x)=>a+x.incRet,0),totP=src.reduce((a,x)=>a+x.inc26,0),totCnt=src.length;
   document.getElementById("metaText").textContent="총 "+src.length+"명";
   document.getElementById("totalVal").textContent=fmtW(totS);
-  document.getElementById("cards").innerHTML=[
-    {l:"기본 연봉 총합",v:src.reduce((a,x)=>a+x.salary,0),c:"#5E51FF"},
-    {l:"리텐션/사이닝 총합",v:totR,c:"#A89BFF"},
-    {l:"'26 1분기 성과 총합",v:totP,c:"#C4B0FF"}
-  ].map(c=>'<div class="card"><div class="label">'+c.l+'</div><div class="val" style="color:'+c.c+'">'+fmtF(c.v)+'</div></div>').join("");
+  document.getElementById("cards").innerHTML=[{l:"기본 연봉 총합",v:src.reduce((a,x)=>a+x.salary,0),c:"#5E51FF"},{l:"리텐션/사이닝 총합",v:totR,c:"#A89BFF"},{l:"'26 1분기 성과 총합",v:totP,c:"#C4B0FF"}].map(c=>'<div class="card"><div class="label">'+c.l+'</div><div class="val" style="color:'+c.c+'">'+fmtF(c.v)+'</div></div>').join("");
   document.getElementById("chartTitle").textContent=tab.label+" 연봉 합계";
+  document.getElementById("distTitle").textContent=tab.label+" 연봉 분포";
   const desc=incRet&&incPerf?"기본 연봉 + 리텐션/사이닝 + 성과 인센티브 포함":incRet?"기본 연봉 + 리텐션/사이닝 인센티브 포함":incPerf?"기본 연봉 + 성과 인센티브 포함":"기본 연봉만 표시";
   document.getElementById("chartDesc").textContent=desc;
   const cols=colors(d.length);
   if(chart)chart.destroy();
-  const ctx=document.getElementById("mainChart");
-  ctx.parentElement.style.height=Math.max(320,d.length*52+40)+"px";
-  chart=new Chart(ctx,{type:"bar",data:{labels:d.map(x=>x.name),datasets:[{data:d.map(x=>x.total),backgroundColor:cols,borderRadius:6,barPercentage:0.7}]},
-    options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(15,18,30,0.96)",titleColor:"#fff",bodyColor:"#E8E4DC",borderColor:"rgba(94,81,255,0.25)",borderWidth:1,padding:14,titleFont:{size:14,weight:700},bodyFont:{size:13},
-        callbacks:{label:function(c){const x=d[c.dataIndex];return["연봉 합계: "+fmtF(x.total),"평균 연봉: "+fmtF(x.avg),"인원: "+x.cnt+"명",...(x.ret>0?["리텐션/사이닝: "+fmtF(x.ret)]:[]),...(x.perf>0?["성과 인센티브: "+fmtF(x.perf)]:[])]}}}},
-      scales:{x:{display:false},y:{grid:{display:false},ticks:{color:"rgba(232,228,220,0.7)",font:{size:13,weight:500}}}}}});
-  let hdr="<thead><tr><th class='al'>"+tab.label.replace("별","")+"</th><th class='ar'>인원</th><th class='ar'>인원 비율</th><th class='ar'>연봉 합계</th><th class='ar'>연봉 비율</th>"+(incRet?"<th class='ar'>리텐션/사이닝</th>":"")+(incPerf?"<th class='ar'>성과</th>":"")+"<th class='ar'>평균 연봉</th><th class='ar'>총합</th></tr></thead>";
-  let body="<tbody>"+d.map(x=>"<tr><td class='al fw'>"+x.name+"</td><td class='ar dim'>"+x.cnt+"명</td><td class='ar dim'>"+(totCnt?(x.cnt/totCnt*100).toFixed(1):0)+"%</td><td class='ar purple'>"+fmtM(x.base)+"</td><td class='ar dim'>"+(totS?(x.total/totS*100).toFixed(1):0)+"%</td>"+(incRet?"<td class='ar lpurple'>"+(x.ret>0?fmtM(x.ret):"-")+"</td>":"")+(incPerf?"<td class='ar lpurple'>"+(x.perf>0?fmtM(x.perf):"-")+"</td>":"")+"<td class='ar dim'>"+fmtM(x.avg)+"</td><td class='ar white'>"+fmtM(x.total)+"</td></tr>").join("")+"</tbody>";
-  document.getElementById("dataTable").innerHTML=hdr+body
-}
+  const ctx=document.getElementById("mainChart");ctx.parentElement.style.height=Math.max(320,d.length*52+40)+"px";
+  chart=new Chart(ctx,{type:"bar",data:{labels:d.map(x=>x.name),datasets:[{data:d.map(x=>x.total),backgroundColor:cols,borderRadius:6,barPercentage:0.7}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(15,18,30,0.96)",titleColor:"#fff",bodyColor:"#E8E4DC",borderColor:"rgba(94,81,255,0.25)",borderWidth:1,padding:14,titleFont:{size:14,weight:700},bodyFont:{size:13},callbacks:{label:function(c){const x=d[c.dataIndex];return["연봉 합계: "+fmtF(x.total),"평균 연봉: "+fmtF(x.avg),"인원: "+x.cnt+"명",...(x.ret>0?["리텐션/사이닝: "+fmtF(x.ret)]:[]),...(x.perf>0?["성과 인센티브: "+fmtF(x.perf)]:[])]}}}},scales:{x:{display:false},y:{grid:{display:false},ticks:{color:"rgba(232,228,220,0.7)",font:{size:13,weight:500}}}}}});
+  if(distChartObj)distChartObj.destroy();
+  const dctx=document.getElementById("distChart");dctx.parentElement.style.height=Math.max(200,dd.length*44+40)+"px";
+  distChartObj=new Chart(dctx,{type:"bar",data:{labels:dd.map(x=>x.name),datasets:[{data:dd.map(x=>[x.min,x.max]),backgroundColor:"rgba(255,255,255,0.04)",borderColor:"rgba(255,255,255,0.08)",borderWidth:1,borderRadius:4,barPercentage:0.35}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(15,18,30,0.96)",titleColor:"#fff",bodyColor:"#E8E4DC",borderColor:"rgba(94,81,255,0.25)",borderWidth:1,padding:14,titleFont:{size:14,weight:700},bodyFont:{size:13},callbacks:{label:function(c){const x=dd[c.dataIndex];return["최저: "+fmtF(x.min),"중간값: "+fmtF(x.median),"최고: "+fmtF(x.max),"인원: "+x.cnt+"명"]}}}},scales:{x:{display:false},y:{grid:{display:false},ticks:{color:"rgba(232,228,220,0.7)",font:{size:13,weight:500}}}}},plugins:[{afterDraw(ch){const cx=ch.ctx;const meta=ch.getDatasetMeta(0);const xs=ch.scales.x;dd.forEach((x,i)=>{const bar=meta.data[i];if(!bar)return;const y=bar.y;cx.beginPath();cx.arc(xs.getPixelForValue(x.min),y,5,0,Math.PI*2);cx.fillStyle="#E85454";cx.fill();cx.beginPath();cx.arc(xs.getPixelForValue(x.median),y,6,0,Math.PI*2);cx.fillStyle="#4AC978";cx.fill();cx.beginPath();cx.arc(xs.getPixelForValue(x.max),y,5,0,Math.PI*2);cx.fillStyle="rgba(232,228,220,0.5)";cx.fill()})}}]});
+  let hdr="<thead><tr><th class='al'>"+tab.label.replace("별","")+"</th><th class='ar'>인원</th><th class='ar'>인원 비율</th><th class='ar'>연봉 합계</th><th class='ar'>연봉 비율</th>"+(incRet?"<th class='ar'>리텐션/사이닝</th>":"")+(incPerf?"<th class='ar'>성과</th>":"")+"<th class='ar'>최저</th><th class='ar'>중간값</th><th class='ar'>최고</th><th class='ar'>평균 연봉</th><th class='ar'>총합</th></tr></thead>";
+  let body="<tbody>"+d.map((x,idx)=>{const dx=dd.find(z=>z.name===x.name)||{min:0,median:0,max:0};return"<tr><td class='al fw'>"+x.name+"</td><td class='ar dim'>"+x.cnt+"명</td><td class='ar dim'>"+(totCnt?(x.cnt/totCnt*100).toFixed(1):0)+"%</td><td class='ar purple'>"+fmtM(x.base)+"</td><td class='ar dim'>"+(totS?(x.total/totS*100).toFixed(1):0)+"%</td>"+(incRet?"<td class='ar lpurple'>"+(x.ret>0?fmtM(x.ret):"-")+"</td>":"")+(incPerf?"<td class='ar lpurple'>"+(x.perf>0?fmtM(x.perf):"-")+"</td>":"")+"<td class='ar red'>"+fmtM(dx.min)+"</td><td class='ar green'>"+fmtM(dx.median)+"</td><td class='ar lgray'>"+fmtM(dx.max)+"</td><td class='ar dim'>"+fmtM(x.avg)+"</td><td class='ar white'>"+fmtM(x.total)+"</td></tr>"}).join("")+"</tbody>";
+  document.getElementById("dataTable").innerHTML=hdr+body}
 <\/script>
-</body>
-</html>`;
+</body></html>`;
 }
 
 /* ─── Main Component ─── */
@@ -317,6 +314,7 @@ export default function App() {
   const currentTab = TABS.find(t => t.key === tab);
   const filtered = useMemo(() => hideClv ? data.filter(d => d.dept !== "C-lv") : data, [data, hideClv]);
   const chartData = useMemo(() => filtered.length ? aggregate(filtered, currentTab.field, incRet, incPerf, currentTab.order) : [], [filtered, tab, incRet, incPerf]);
+  const distData = useMemo(() => filtered.length ? computeDistribution(filtered, currentTab.field, incRet, incPerf, currentTab.order) : [], [filtered, tab, incRet, incPerf]);
   const colors = useMemo(() => barColors(chartData.length), [chartData.length]);
 
   const totalSalary = useMemo(() => {
@@ -360,7 +358,6 @@ export default function App() {
     setShowPwModal(false); setDlPw(""); setDlPwConfirm("");
   };
 
-  /* ─── Styles ─── */
   const S = {
     wrap: { minHeight: "100vh", background: "linear-gradient(160deg,#0A0F1C,#111827,#150F20)", fontFamily: "'Noto Sans KR','Pretendard',sans-serif", color: "#E8E4DC", padding: "32px 24px" },
     mx: { maxWidth: 960, margin: "0 auto" },
@@ -378,7 +375,7 @@ export default function App() {
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}`}</style>
       <div style={S.mx}>
 
-        {/* Upload Area */}
+        {/* Upload */}
         <div style={{ ...S.panel, marginBottom: 24, padding: 24 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <div>
@@ -386,25 +383,19 @@ export default function App() {
               <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>Google Sheets → 파일 → CSV로 다운로드 → 여기에 업로드</div>
             </div>
             {data.length > 0 && (
-              <button onClick={() => setShowPwModal(true)} style={{
-                padding: "10px 22px", borderRadius: 10, border: "none",
-                background: "linear-gradient(135deg,#5E51FF,#7B6FFF)", color: "#fff",
-                fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-              }}>
+              <button onClick={() => setShowPwModal(true)} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#5E51FF,#7B6FFF)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 15 }}>↓</span> HTML 다운로드
               </button>
             )}
           </div>
           <div onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={handleDrop}
             onClick={() => document.getElementById("csv-up").click()}
-            style={{ border: dragging ? `2px dashed ${BASE}` : "2px dashed rgba(255,255,255,0.08)", borderRadius: 12, padding: "24px 20px", textAlign: "center", background: dragging ? "rgba(94,81,255,0.06)" : "transparent", cursor: "pointer", transition: "all .2s" }}>
+            style={{ border: dragging ? `2px dashed ${BASE}` : "2px dashed rgba(255,255,255,0.08)", borderRadius: 12, padding: "24px 20px", textAlign: "center", background: dragging ? "rgba(94,81,255,0.06)" : "transparent", cursor: "pointer" }}>
             <input id="csv-up" type="file" accept=".csv" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; }} />
             <div style={{ fontSize: 26, marginBottom: 6, opacity: 0.4 }}>📄</div>
             <div style={{ fontSize: 13, color: "rgba(232,228,220,0.55)", fontWeight: 500 }}>CSV 파일을 드래그하거나 클릭하여 업로드</div>
           </div>
-          {uploadMsg && (
-            <div style={{ marginTop: 10, padding: "8px 14px", borderRadius: 8, fontSize: 13, background: uploadMsg.t === "ok" ? "rgba(94,81,255,0.1)" : "rgba(232,84,84,0.1)", color: uploadMsg.t === "ok" ? "#A89BFF" : "#E85454" }}>{uploadMsg.m}</div>
-          )}
+          {uploadMsg && <div style={{ marginTop: 10, padding: "8px 14px", borderRadius: 8, fontSize: 13, background: uploadMsg.t === "ok" ? "rgba(94,81,255,0.1)" : "rgba(232,84,84,0.1)", color: uploadMsg.t === "ok" ? "#A89BFF" : "#E85454" }}>{uploadMsg.m}</div>}
         </div>
 
         {data.length === 0 ? (
@@ -416,15 +407,8 @@ export default function App() {
           <>
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
-              <div>
-                <div style={S.brand}>Featuring</div>
-                <h1 style={S.h1}>연봉 대시보드</h1>
-                <div style={S.meta}>총 {data.length}명</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>총 연봉 합계</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>{fmt(totalSalary)}</div>
-              </div>
+              <div><div style={S.brand}>Featuring</div><h1 style={S.h1}>연봉 대시보드</h1><div style={S.meta}>총 {filtered.length}명</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>총 연봉 합계</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>{fmt(totalSalary)}</div></div>
             </div>
 
             {/* Cards */}
@@ -451,24 +435,24 @@ export default function App() {
                   { v: incRet, set: () => setIncRet(!incRet), l: "리텐션/사이닝", c: "#A89BFF" },
                   { v: incPerf, set: () => setIncPerf(!incPerf), l: "'26 1분기 성과", c: "#C4B0FF" },
                 ].map((c, i) => (
-  <label key={i} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: c.v ? c.c : "rgba(232,228,220,0.45)" }}>
-    <div onClick={c.set} style={S.chk(c.v, BASE)}>
-      {c.v && <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-    </div>
-    <span>{c.l}</span>
-  </label>
-))}
-<label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: hideClv ? "#E85454" : "rgba(232,228,220,0.45)", marginLeft: 8 }}>
-  <div onClick={() => setHideClv(!hideClv)} style={S.chk(hideClv, "#E85454")}>
-    {hideClv && <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-  </div>
-  <span>C-lv 제외</span>
-</label>
+                  <label key={i} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: c.v ? c.c : "rgba(232,228,220,0.45)" }}>
+                    <div onClick={c.set} style={S.chk(c.v, BASE)}>
+                      {c.v && <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                    </div>
+                    <span>{c.l}</span>
+                  </label>
+                ))}
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: hideClv ? "#E85454" : "rgba(232,228,220,0.45)", marginLeft: 8 }}>
+                  <div onClick={() => setHideClv(!hideClv)} style={S.chk(hideClv, "#E85454")}>
+                    {hideClv && <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                  </div>
+                  <span>C-lv 제외</span>
+                </label>
               </div>
             </div>
 
-            {/* Chart */}
-            <div style={S.panel}>
+            {/* Bar Chart */}
+            <div style={{ ...S.panel, marginBottom: 20 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4, paddingLeft: 8 }}>{currentTab.label} 연봉 합계</div>
               <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>
                 {incRet && incPerf ? "기본 연봉 + 리텐션/사이닝 + 성과 인센티브 포함" : incRet ? "기본 연봉 + 리텐션/사이닝 인센티브 포함" : incPerf ? "기본 연봉 + 성과 인센티브 포함" : "기본 연봉만 표시"}
@@ -485,8 +469,15 @@ export default function App() {
               </ResponsiveContainer>
             </div>
 
+            {/* Range Chart */}
+            <div style={{ ...S.panel, marginBottom: 20 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4, paddingLeft: 8 }}>{currentTab.label} 연봉 분포</div>
+              <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 16, paddingLeft: 8 }}>개인 연봉 기준 최저 / 중간값 / 최고</div>
+              <RangeChart distData={distData} />
+            </div>
+
             {/* Table */}
-            <div style={{ marginTop: 20, ...S.panel, padding: 0, overflow: "hidden" }}>
+            <div style={{ ...S.panel, padding: 0, overflow: "hidden" }}>
               <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", gap: 8, alignItems: "baseline" }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>상세 데이터</span>
                 <span style={{ fontSize: 12, color: "rgba(232,228,220,0.35)" }}>(단위: 만원)</span>
@@ -495,25 +486,31 @@ export default function App() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                      {[currentTab.label.replace("별", ""), "인원", "인원 비율", "연봉 합계", "연봉 비율", ...(incRet ? ["리텐션/사이닝"] : []), ...(incPerf ? ["성과"] : []), "평균 연봉", "총합"].map((h, i) => (
+                      {[currentTab.label.replace("별", ""), "인원", "인원 비율", "연봉 합계", "연봉 비율", ...(incRet ? ["리텐션/사이닝"] : []), ...(incPerf ? ["성과"] : []), "최저", "중간값", "최고", "평균 연봉", "총합"].map((h, i) => (
                         <th key={i} style={{ padding: "12px 16px", textAlign: i === 0 ? "left" : "right", color: "rgba(232,228,220,0.4)", fontWeight: 600, fontSize: 11, letterSpacing: 1 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {chartData.map((d, i) => (
-                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                        <td style={{ padding: "12px 16px", fontWeight: 600, color: "#fff" }}>{d.name}</td>
-                         <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.6)" }}>{d.count}명</td>
-                        <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.4)" }}>{totalCount ? (d.count/totalCount*100).toFixed(1) : 0}%</td>
-                        <td style={{ padding: "12px 16px", textAlign: "right", color: "#A89BFF" }}>{fmtM(d.baseSalary)}</td>
-                        <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.4)" }}>{totalSalary ? (d.total/totalSalary*100).toFixed(1) : 0}%</td>
-                        {incRet && <td style={{ padding: "12px 16px", textAlign: "right", color: "#C4B0FF" }}>{d.retInc > 0 ? fmtM(d.retInc) : "-"}</td>}
-                        {incPerf && <td style={{ padding: "12px 16px", textAlign: "right", color: "#C4B0FF" }}>{d.perfInc > 0 ? fmtM(d.perfInc) : "-"}</td>}
-                        <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.6)" }}>{fmtM(d.avg)}</td>
-                        <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700, color: "#fff" }}>{fmtM(d.total)}</td>
-                      </tr>
-                    ))}
+                    {chartData.map((d, i) => {
+                      const dd = distData.find(x => x.name === d.name) || { min: 0, median: 0, max: 0 };
+                      return (
+                        <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                          <td style={{ padding: "12px 16px", fontWeight: 600, color: "#fff" }}>{d.name}</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.6)" }}>{d.count}명</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.4)" }}>{totalCount ? (d.count / totalCount * 100).toFixed(1) : 0}%</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right", color: "#A89BFF" }}>{fmtM(d.baseSalary)}</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.4)" }}>{totalSalary ? (d.total / totalSalary * 100).toFixed(1) : 0}%</td>
+                          {incRet && <td style={{ padding: "12px 16px", textAlign: "right", color: "#C4B0FF" }}>{d.retInc > 0 ? fmtM(d.retInc) : "-"}</td>}
+                          {incPerf && <td style={{ padding: "12px 16px", textAlign: "right", color: "#C4B0FF" }}>{d.perfInc > 0 ? fmtM(d.perfInc) : "-"}</td>}
+                          <td style={{ padding: "12px 16px", textAlign: "right", color: "#E85454" }}>{fmtM(dd.min)}</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right", color: "#4AC978" }}>{fmtM(dd.median)}</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right", color: "#5E51FF" }}>{fmtM(dd.max)}</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right", color: "rgba(232,228,220,0.6)" }}>{fmtM(d.avg)}</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700, color: "#fff" }}>{fmtM(d.total)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -527,33 +524,27 @@ export default function App() {
       {/* Password Modal */}
       {showPwModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, backdropFilter: "blur(6px)" }} onClick={() => setShowPwModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: "rgba(20,22,40,0.95)", border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 16, padding: "36px 32px", width: 380,
-            boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
-          }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "rgba(20,22,40,0.95)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "36px 32px", width: 380, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 4 }}>HTML 다운로드</div>
             <div style={{ fontSize: 13, color: "rgba(232,228,220,0.4)", marginBottom: 24 }}>대시보드에 적용할 비밀번호를 설정하세요</div>
-
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: "rgba(232,228,220,0.5)", marginBottom: 6 }}>비밀번호</div>
-             <div style={{ position: "relative" }}>
-  <input type={showPw ? "text" : "password"} value={dlPw} onChange={e => { const v = e.target.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/g, ""); setDlPw(v); }} placeholder="영문/숫자/특수문자만 입력"
-    style={{ width: "100%", padding: "12px 40px 12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#E8E4DC", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-  <span onClick={() => setShowPw(!showPw)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 14, color: "rgba(232,228,220,0.4)", userSelect: "none" }}>{showPw ? "🙈" : "👁"}</span>
-</div>
+              <div style={{ position: "relative" }}>
+                <input type={showPw ? "text" : "password"} value={dlPw} onChange={e => { const v = e.target.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/g, ""); setDlPw(v); }} placeholder="영문/숫자/특수문자만 입력"
+                  style={{ width: "100%", padding: "12px 40px 12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#E8E4DC", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                <span onClick={() => setShowPw(!showPw)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 14, color: "rgba(232,228,220,0.4)", userSelect: "none" }}>{showPw ? "🙈" : "👁"}</span>
+              </div>
             </div>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 12, color: "rgba(232,228,220,0.5)", marginBottom: 6 }}>비밀번호 확인</div>
               <div style={{ position: "relative" }}>
-  <input type={showPwConfirm ? "text" : "password"} value={dlPwConfirm} onChange={e => { const v = e.target.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/g, ""); setDlPwConfirm(v); }} placeholder="비밀번호 재입력"
-    onKeyDown={e => e.key === "Enter" && dlPw && dlPw === dlPwConfirm && downloadHTML()}
-    style={{ width: "100%", padding: "12px 40px 12px 14px", background: "rgba(255,255,255,0.04)", border: `1px solid ${dlPwConfirm && dlPw !== dlPwConfirm ? "#E85454" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, color: "#E8E4DC", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-  <span onClick={() => setShowPwConfirm(!showPwConfirm)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 14, color: "rgba(232,228,220,0.4)", userSelect: "none" }}>{showPwConfirm ? "🙈" : "👁"}</span>
-</div>
+                <input type={showPwConfirm ? "text" : "password"} value={dlPwConfirm} onChange={e => { const v = e.target.value.replace(/[^a-zA-Z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/g, ""); setDlPwConfirm(v); }} placeholder="비밀번호 재입력"
+                  onKeyDown={e => e.key === "Enter" && dlPw && dlPw === dlPwConfirm && downloadHTML()}
+                  style={{ width: "100%", padding: "12px 40px 12px 14px", background: "rgba(255,255,255,0.04)", border: `1px solid ${dlPwConfirm && dlPw !== dlPwConfirm ? "#E85454" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, color: "#E8E4DC", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                <span onClick={() => setShowPwConfirm(!showPwConfirm)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", cursor: "pointer", fontSize: 14, color: "rgba(232,228,220,0.4)", userSelect: "none" }}>{showPwConfirm ? "🙈" : "👁"}</span>
+              </div>
               {dlPwConfirm && dlPw !== dlPwConfirm && <div style={{ color: "#E85454", fontSize: 12, marginTop: 6 }}>비밀번호가 일치하지 않습니다</div>}
             </div>
-
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowPwModal(false)} style={{ flex: 1, padding: "12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(232,228,220,0.6)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>취소</button>
               <button onClick={downloadHTML} disabled={!dlPw || dlPw !== dlPwConfirm}
