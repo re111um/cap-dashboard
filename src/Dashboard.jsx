@@ -106,9 +106,13 @@ const Tip=({active,payload,label})=>{
 /* ─── Range Chart Component ─── */
 function RangeChart({ distData }) {
   if (!distData.length) return null;
+   const globalMin = Math.min(...distData.map(d => d.min));
   const globalMax = Math.max(...distData.map(d => d.max));
-  const pct = v => globalMax > 0 ? (v / globalMax) * 100 : 0;
+  const pad = (globalMax - globalMin) * 0.06 || 1;
+  const lo = globalMin - pad, hi = globalMax + pad;
+  const pct = v => ((v - lo) / (hi - lo)) * 100;
   const [hover, setHover] = useState(null);
+  const ticks = [globalMin, Math.round((globalMin + globalMax) / 2), globalMax];
 
   return (
     <div style={{ padding: "0 8px" }}>
@@ -140,7 +144,12 @@ function RangeChart({ distData }) {
             </div>
           )}
         </div>
-      ))}
+            ))}
+      <div style={{ display: "flex", justifyContent: "space-between", marginLeft: 140, marginTop: 8 }}>
+        {ticks.map((t, i) => (
+          <div key={i} style={{ fontSize: 11, color: "rgba(232,228,220,0.3)" }}>{fmtFull(t)}</div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -236,7 +245,7 @@ td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03)}
 </div></div>
 <div id="app">
 <div class="header"><div><div class="brand-sm">Featuring</div><h1>연봉 대시보드</h1><div class="meta" id="metaText"></div></div>
-<div style="text-align:right"><div class="total-label">총 연봉 합계</div><div class="total-val" id="totalVal"></div></div></div>
+<div style="text-align:right"><div class="total-label">총 연봉 합계</div><div class="total-val" id="totalVal"></div><div class="meta" id="monthlyVal"></div></div>
 <div class="cards" id="cards"></div>
 <div class="controls"><div class="tabs" id="tabBar"></div>
 <div class="checks">
@@ -277,6 +286,7 @@ function render(){
   const totR=src.reduce((a,x)=>a+x.incRet,0),totP=src.reduce((a,x)=>a+x.inc26,0),totCnt=src.length;
   document.getElementById("metaText").textContent="총 "+src.length+"명";
   document.getElementById("totalVal").textContent=fmtW(totS);
+  document.getElementById("monthlyVal").textContent="월 "+fmtW(Math.round(totS/12));
   document.getElementById("cards").innerHTML=[{l:"기본 연봉 총합",v:src.reduce((a,x)=>a+x.salary,0),c:"#5E51FF"},{l:"리텐션/사이닝 총합",v:totR,c:"#A89BFF"},{l:"'26 1분기 성과 총합",v:totP,c:"#C4B0FF"}].map(c=>'<div class="card"><div class="label">'+c.l+'</div><div class="val" style="color:'+c.c+'">'+fmtF(c.v)+'</div></div>').join("");
   document.getElementById("chartTitle").textContent=tab.label+" 연봉 합계";
   document.getElementById("distTitle").textContent=tab.label+" 연봉 분포";
@@ -288,7 +298,7 @@ function render(){
   chart=new Chart(ctx,{type:"bar",data:{labels:d.map(x=>x.name),datasets:[{data:d.map(x=>x.total),backgroundColor:cols,borderRadius:6,barPercentage:0.7}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(15,18,30,0.96)",titleColor:"#fff",bodyColor:"#E8E4DC",borderColor:"rgba(94,81,255,0.25)",borderWidth:1,padding:14,titleFont:{size:14,weight:700},bodyFont:{size:13},callbacks:{label:function(c){const x=d[c.dataIndex];return["연봉 합계: "+fmtF(x.total),"평균 연봉: "+fmtF(x.avg),"인원: "+x.cnt+"명",...(x.ret>0?["리텐션/사이닝: "+fmtF(x.ret)]:[]),...(x.perf>0?["성과 인센티브: "+fmtF(x.perf)]:[])]}}}},scales:{x:{display:false},y:{grid:{display:false},ticks:{color:"rgba(232,228,220,0.7)",font:{size:13,weight:500}}}}}});
   if(distChartObj)distChartObj.destroy();
   const dctx=document.getElementById("distChart");dctx.parentElement.style.height=Math.max(200,dd.length*44+40)+"px";
-  distChartObj=new Chart(dctx,{type:"bar",data:{labels:dd.map(x=>x.name),datasets:[{data:dd.map(x=>[x.min,x.max]),backgroundColor:"rgba(255,255,255,0.04)",borderColor:"rgba(255,255,255,0.08)",borderWidth:1,borderRadius:4,barPercentage:0.35}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(15,18,30,0.96)",titleColor:"#fff",bodyColor:"#E8E4DC",borderColor:"rgba(94,81,255,0.25)",borderWidth:1,padding:14,titleFont:{size:14,weight:700},bodyFont:{size:13},callbacks:{label:function(c){const x=dd[c.dataIndex];return["최저: "+fmtF(x.min),"중간값: "+fmtF(x.median),"최고: "+fmtF(x.max),"인원: "+x.cnt+"명"]}}}},scales:{x:{display:false},y:{grid:{display:false},ticks:{color:"rgba(232,228,220,0.7)",font:{size:13,weight:500}}}}},plugins:[{afterDraw(ch){const cx=ch.ctx;const meta=ch.getDatasetMeta(0);const xs=ch.scales.x;dd.forEach((x,i)=>{const bar=meta.data[i];if(!bar)return;const y=bar.y;cx.beginPath();cx.arc(xs.getPixelForValue(x.min),y,5,0,Math.PI*2);cx.fillStyle="#E85454";cx.fill();cx.beginPath();cx.arc(xs.getPixelForValue(x.median),y,6,0,Math.PI*2);cx.fillStyle="#4AC978";cx.fill();cx.beginPath();cx.arc(xs.getPixelForValue(x.max),y,5,0,Math.PI*2);cx.fillStyle="rgba(232,228,220,0.5)";cx.fill()})}}]});
+  distChartObj=new Chart(dctx,{type:"bar",data:{labels:dd.map(x=>x.name),datasets:[{data:dd.map(x=>[x.min,x.max]),backgroundColor:"rgba(255,255,255,0.04)",borderColor:"rgba(255,255,255,0.08)",borderWidth:1,borderRadius:4,barPercentage:0.35}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(15,18,30,0.96)",titleColor:"#fff",bodyColor:"#E8E4DC",borderColor:"rgba(94,81,255,0.25)",borderWidth:1,padding:14,titleFont:{size:14,weight:700},bodyFont:{size:13},callbacks:{label:function(c){const x=dd[c.dataIndex];return["최저: "+fmtF(x.min),"중간값: "+fmtF(x.median),"최고: "+fmtF(x.max),"인원: "+x.cnt+"명"]}}}},scales:{x:{display:true,min:Math.min(...dd.map(x=>x.min))*0.94,max:Math.max(...dd.map(x=>x.max))*1.06,grid:{color:"rgba(255,255,255,0.03)"},ticks:{color:"rgba(232,228,220,0.3)",font:{size:11},callback:function(v){return Math.round(v/1e4).toLocaleString()+"만원"}}},y:{grid:{display:false},ticks:{color:"rgba(232,228,220,0.7)",font:{size:13,weight:500}}}}},plugins:[{afterDraw(ch){const cx=ch.ctx;const meta=ch.getDatasetMeta(0);const xs=ch.scales.x;dd.forEach((x,i)=>{const bar=meta.data[i];if(!bar)return;const y=bar.y;cx.beginPath();cx.arc(xs.getPixelForValue(x.min),y,5,0,Math.PI*2);cx.fillStyle="#E85454";cx.fill();cx.beginPath();cx.arc(xs.getPixelForValue(x.median),y,6,0,Math.PI*2);cx.fillStyle="#4AC978";cx.fill();cx.beginPath();cx.arc(xs.getPixelForValue(x.max),y,5,0,Math.PI*2);cx.fillStyle="rgba(232,228,220,0.5)";cx.fill()})}}]});
   let hdr="<thead><tr><th class='al'>"+tab.label.replace("별","")+"</th><th class='ar'>인원</th><th class='ar'>인원 비율</th><th class='ar'>연봉 합계</th><th class='ar'>연봉 비율</th>"+(incRet?"<th class='ar'>리텐션/사이닝</th>":"")+(incPerf?"<th class='ar'>성과</th>":"")+"<th class='ar'>최저</th><th class='ar'>중간값</th><th class='ar'>최고</th><th class='ar'>평균 연봉</th><th class='ar'>총합</th></tr></thead>";
   let body="<tbody>"+d.map((x,idx)=>{const dx=dd.find(z=>z.name===x.name)||{min:0,median:0,max:0};return"<tr><td class='al fw'>"+x.name+"</td><td class='ar dim'>"+x.cnt+"명</td><td class='ar dim'>"+(totCnt?(x.cnt/totCnt*100).toFixed(1):0)+"%</td><td class='ar purple'>"+fmtM(x.base)+"</td><td class='ar dim'>"+(totS?(x.total/totS*100).toFixed(1):0)+"%</td>"+(incRet?"<td class='ar lpurple'>"+(x.ret>0?fmtM(x.ret):"-")+"</td>":"")+(incPerf?"<td class='ar lpurple'>"+(x.perf>0?fmtM(x.perf):"-")+"</td>":"")+"<td class='ar red'>"+fmtM(dx.min)+"</td><td class='ar green'>"+fmtM(dx.median)+"</td><td class='ar lgray'>"+fmtM(dx.max)+"</td><td class='ar dim'>"+fmtM(x.avg)+"</td><td class='ar white'>"+fmtM(x.total)+"</td></tr>"}).join("")+"</tbody>";
   document.getElementById("dataTable").innerHTML=hdr+body}
@@ -408,7 +418,8 @@ export default function App() {
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 28, flexWrap: "wrap", gap: 16 }}>
               <div><div style={S.brand}>Featuring</div><h1 style={S.h1}>연봉 대시보드</h1><div style={S.meta}>총 {filtered.length}명</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>총 연봉 합계</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>{fmt(totalSalary)}</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>총 연봉 합계</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>{fmt(totalSalary)}</div>
+<div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>월 {fmt(Math.round(totalSalary / 12))}</div></div>
             </div>
 
             {/* Cards */}
