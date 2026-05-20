@@ -44,7 +44,11 @@ if (password !== process.env.DASHBOARD_PASSWORD) {
     });
 
     return NextResponse.json(result);
-  } catch (e) {
-    return NextResponse.json({ error: "server_error" }, { status: 500 });
+} catch (e) {
+    // 1. Vercel 로그에 에러의 상세 원인을 빨간 글씨로 출력합니다.
+    console.error("서버 에러 상세 내역:", e); 
+    
+    // 2. 프론트엔드로 에러 메시지(e.message)를 같이 보내줍니다.
+    return NextResponse.json({ error: "server_error", details: e.message }, { status: 500 });
   }
 }
