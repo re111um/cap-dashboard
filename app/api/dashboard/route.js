@@ -8,6 +8,14 @@ export async function POST(request) {
   try {
     const { password, incRet, incPerf, hideClv } = await request.json();
 
+    // 코드 추가
+console.log("프론트엔드에서 보낸 비번:", password);
+console.log("Vercel에 저장된 비번:", process.env.DASHBOARD_PASSWORD);
+
+if (password !== process.env.DASHBOARD_PASSWORD) {
+  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+}
+
     if (password !== process.env.DASHBOARD_PASSWORD) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
