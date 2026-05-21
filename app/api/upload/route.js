@@ -32,7 +32,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "storage_unavailable" }, { status: 500 });
     }
 
-    const preview = computeAll(rawData, { incRet: false, incPerf: false, hideClv: false, asOfDate: null });
+    const preview = computeAll(rawData, { incRet: false, incPerf: false, asOfDate: null });
 
     return NextResponse.json({ success: true, count: rawData.length, preview });
   } catch (e) {

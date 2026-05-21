@@ -185,7 +185,6 @@ export default function DashboardView({ initialData, password }) {
   const [tab, setTab] = useState("dept");
   const [incRet, setIncRet] = useState(false);
   const [incPerf, setIncPerf] = useState(false);
-  const [hideClv, setHideClv] = useState(false);
   const [showTotal, setShowTotal] = useState(true);
   const [showAvg, setShowAvg] = useState(false);
   const [asOfDate, setAsOfDate] = useState("");
@@ -202,21 +201,19 @@ export default function DashboardView({ initialData, password }) {
         password,
         incRet: opts.incRet ?? incRet,
         incPerf: opts.incPerf ?? incPerf,
-        hideClv: opts.hideClv ?? hideClv,
         asOfDate: "asOfDate" in opts ? opts.asOfDate : asOfDate,
       }),
     });
     const d = await res.json();
     if (!d.error) setData(d);
     setFetching(false);
-  }, [password, incRet, incPerf, hideClv, asOfDate]);
+  }, [password, incRet, incPerf, asOfDate]);
 
   const toggle = (field, current) => {
     const next = !current;
-    const newOpts = { incRet, incPerf, hideClv, [field]: next };
+    const newOpts = { incRet, incPerf, [field]: next };
     if (field === "incRet") setIncRet(next);
     if (field === "incPerf") setIncPerf(next);
-    if (field === "hideClv") setHideClv(next);
     refetch(newOpts);
   };
 
@@ -337,7 +334,6 @@ export default function DashboardView({ initialData, password }) {
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
             <ChkLabel on={incRet} onClick={() => toggle("incRet", incRet)} label="리텐션/사이닝" color="#A89BFF" />
             <ChkLabel on={incPerf} onClick={() => toggle("incPerf", incPerf)} label="'26 1분기 성과" color="#C4B0FF" />
-            <ChkLabel on={hideClv} onClick={() => toggle("hideClv", hideClv)} label="C-lv 제외" color="#E85454" />
           </div>
         </div>
 
@@ -390,16 +386,15 @@ export default function DashboardView({ initialData, password }) {
           </div>
           <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>{descText}</div>
           <ResponsiveContainer width="100%" height={Math.max(320, chartData.length * 60 + 100)}>
-            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 0, left: 20 }} barCategoryGap="28%">
-              <XAxis dataKey="name" tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} interval={0} height={50} scale="band" />
+            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 30, bottom: 0, left: 30 }} barCategoryGap="28%">
+              <XAxis dataKey="name" type="category" tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} interval={0} height={50} scale="band" padding={{ left: 0, right: 0 }} />
               <YAxis hide domain={[0, yMax * 1.25]} />
               <Tooltip content={<ChartTip showTotal={showTotal} showAvg={showAvg} />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-              {showTotal && (
-                <Bar dataKey="total" radius={[6, 6, 0, 0]}
-                  label={{ position: "top", formatter: (v) => fmt(v), fill: "rgba(232,228,220,0.5)", fontSize: 10 }}>
-                  {chartData.map((_, i) => <Cell key={i} fill={colors[i]} />)}
-                </Bar>
-              )}
+              {/* 항상 Bar 렌더링 → band scale 고정. showTotal=false면 투명 처리 */}
+              <Bar dataKey="total" radius={[6, 6, 0, 0]} isAnimationActive={false}
+                label={showTotal ? { position: "top", formatter: (v) => fmt(v), fill: "rgba(232,228,220,0.5)", fontSize: 10 } : false}>
+                {chartData.map((_, i) => <Cell key={i} fill={showTotal ? colors[i] : "transparent"} />)}
+              </Bar>
               {showAvg && (
                 <Line type="linear" dataKey="avg" stroke="#4AC978" strokeWidth={2} dot={{ r: 5, fill: "#4AC978", stroke: "rgba(15,18,30,0.8)", strokeWidth: 2 }}
                   label={!showTotal ? { position: "top", formatter: (v) => fmt(v), fill: "#4AC978", fontSize: 10 } : false} />
