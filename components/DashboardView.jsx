@@ -117,6 +117,7 @@ function UploadPanel({ password, onSuccess }) {
         setErrMsg(
           d.error === "parse_failed" ? "CSV 파싱 실패. 파일 형식을 확인해주세요." :
           d.error === "unauthorized" ? "비밀번호 오류가 발생했습니다." :
+          d.error === "storage_unavailable" ? "저장 공간에 접근할 수 없습니다. Vercel KV 설정이 필요합니다." :
           "업로드에 실패했습니다."
         );
       }
@@ -247,8 +248,11 @@ export default function DashboardView({ initialData, password }) {
   const ChkSvg = <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 
   const ChkLabel = ({ on, onClick, label, color, disabled }) => (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: disabled ? "not-allowed" : "pointer", fontSize: 13, color: on ? (color || "#A89BFF") : "rgba(232,228,220,0.45)", opacity: disabled ? 0.4 : 1 }}>
-      <div onClick={disabled ? undefined : onClick} style={S.chk(on, color)}>{on && ChkSvg}</div>
+    <label
+      onClick={disabled ? undefined : onClick}
+      style={{ display: "flex", alignItems: "center", gap: 8, cursor: disabled ? "not-allowed" : "pointer", fontSize: 13, color: on ? (color || "#A89BFF") : "rgba(232,228,220,0.45)", opacity: disabled ? 0.4 : 1 }}
+    >
+      <div style={S.chk(on, color)}>{on && ChkSvg}</div>
       <span>{label}</span>
     </label>
   );
@@ -385,9 +389,9 @@ export default function DashboardView({ initialData, password }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>{descText}</div>
-          <ResponsiveContainer width="100%" height={380}>
-            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 100, left: 10 }} barCategoryGap="28%">
-              <XAxis dataKey="name" tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} interval={0} angle={-40} textAnchor="end" height={100} />
+          <ResponsiveContainer width="100%" height={Math.max(360, chartData.length * 60 + 120)}>
+            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 0, left: 10 }} barCategoryGap="28%">
+              <XAxis dataKey="name" tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} interval={0} angle={-40} textAnchor="end" height={90} />
               <YAxis hide domain={[0, yMax * 1.25]} />
               <Tooltip content={<ChartTip showTotal={showTotal} showAvg={showAvg} />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
               {showTotal && (

@@ -18,19 +18,28 @@ export async function POST(request) {
     }
 
     const encryptedJson = encrypt(csvText, process.env.ENCRYPTION_KEY);
+    let saved = false;
 
     if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
       try {
         const { kv } = await import("@vercel/kv");
         await kv.set("cap_encrypted", encryptedJson);
+        saved = true;
       } catch (e) {
         console.error("KV 저장 실패:", e);
       }
     }
 
-    try {
-      writeFileSync(join(process.cwd(), "data", "encrypted.json"), encryptedJson);
-    } catch {}
+    if (!saved) {
+      try {
+        writeFileSync(join(process.cwd(), "data", "encrypted.json"), encryptedJson);
+        saved = true;
+      } catch {}
+    }
+
+    if (!saved) {
+      return NextResponse.json({ error: "storage_unavailable" }, { status: 500 });
+    }
 
     const preview = computeAll(rawData, { incRet: false, incPerf: false, hideClv: false, asOfDate: null });
 
