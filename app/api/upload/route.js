@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { encrypt } from "@/lib/crypto";
 import { parseCSV, computeAll } from "@/lib/aggregate";
+import { kvSet } from "@/lib/kv";
 import { writeFileSync } from "fs";
 import { join } from "path";
 
@@ -18,17 +19,7 @@ export async function POST(request) {
     }
 
     const encryptedJson = encrypt(csvText, process.env.ENCRYPTION_KEY);
-    let saved = false;
-
-    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-      try {
-        const { kv } = await import("@vercel/kv");
-        await kv.set("cap_encrypted", encryptedJson);
-        saved = true;
-      } catch (e) {
-        console.error("KV 저장 실패:", e);
-      }
-    }
+    let saved = await kvSet("cap_encrypted", encryptedJson);
 
     if (!saved) {
       try {
@@ -43,12 +34,9 @@ export async function POST(request) {
 
     const preview = computeAll(rawData, { incRet: false, incPerf: false, hideClv: false, asOfDate: null });
 
-    return NextResponse.json({
-      success: true,
-      count: rawData.length,
-      preview,
-    });
+    return NextResponse.json({ success: true, count: rawData.length, preview });
   } catch (e) {
+    console.error("업로드 에러:", e);
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }

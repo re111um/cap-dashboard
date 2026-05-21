@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 import { decrypt } from "@/lib/crypto";
 import { parseCSV, computeAll } from "@/lib/aggregate";
+import { kvGet } from "@/lib/kv";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 
 async function loadEncryptedData() {
-  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-    try {
-      const { kv } = await import("@vercel/kv");
-      const data = await kv.get("cap_encrypted");
-      if (data) return data;
-    } catch {}
-  }
+  const fromKV = await kvGet("cap_encrypted");
+  if (fromKV) return fromKV;
+
   const filePath = join(process.cwd(), "data", "encrypted.json");
   if (existsSync(filePath)) return readFileSync(filePath, "utf-8");
   return null;
