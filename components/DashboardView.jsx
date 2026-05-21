@@ -18,6 +18,32 @@ const fmt = (v) => `${Math.round(v / 1e4).toLocaleString()}만원`;
 const fmtM = (v) => `${Math.round(v / 1e4).toLocaleString()}`;
 function barColors(n) { return Array.from({ length: n }, (_, i) => opacity(1 - i * (0.55 / Math.max(n - 1, 1)))); }
 
+/* ─── Multi-line X축 Tick (긴 한국어 레이블 줄바꿈) ─── */
+function splitLabel(text) {
+  if (!text || text.length <= 5) return [text || ""];
+  const suffixes = ["본부", "그룹", "팀"];
+  for (const sx of suffixes) {
+    if (text.endsWith(sx) && text.length - sx.length >= 2) {
+      return [text.slice(0, text.length - sx.length), sx];
+    }
+  }
+  const mid = Math.ceil(text.length / 2);
+  return [text.slice(0, mid), text.slice(mid)];
+}
+
+function MultiLineTick({ x, y, payload }) {
+  const lines = splitLabel(payload?.value);
+  return (
+    <g transform={`translate(${x},${y})`}>
+      {lines.map((line, i) => (
+        <text key={i} x={0} y={14 + i * 13} textAnchor="middle" fill="rgba(232,228,220,0.65)" fontSize={11} fontWeight={500}>
+          {line}
+        </text>
+      ))}
+    </g>
+  );
+}
+
 /* ─── Custom Tooltip ─── */
 function ChartTip({ active, payload, label, showTotal, showAvg }) {
   if (!active || !payload?.length) return null;
@@ -385,13 +411,13 @@ export default function DashboardView({ initialData, password }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>{descText}</div>
-          <ResponsiveContainer width="100%" height={Math.max(320, chartData.length * 60 + 100)}>
-            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 30, bottom: 0, left: 30 }} barCategoryGap="28%">
-              <XAxis dataKey="name" type="category" tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} interval={0} height={50} scale="band" padding={{ left: 0, right: 0 }} />
+          <ResponsiveContainer width="100%" height={Math.max(320, chartData.length * 60 + 110)}>
+            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 0, left: 20 }} barCategoryGap="28%">
+              <XAxis dataKey="name" type="category" tick={<MultiLineTick />} axisLine={false} tickLine={false} interval={0} height={56} scale="band" />
               <YAxis hide domain={[0, yMax * 1.25]} />
               <Tooltip content={<ChartTip showTotal={showTotal} showAvg={showAvg} />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-              {/* 항상 Bar 렌더링 → band scale 고정. showTotal=false면 투명 처리 */}
-              <Bar dataKey="total" radius={[6, 6, 0, 0]} isAnimationActive={false}
+              {/* 항상 Bar 렌더링 → band scale 고정. showTotal=false면 dataKey를 'avg'로 전환해 스케일 일치, 색은 투명 처리 */}
+              <Bar dataKey={showTotal ? "total" : "avg"} radius={[6, 6, 0, 0]} isAnimationActive={false}
                 label={showTotal ? { position: "top", formatter: (v) => fmt(v), fill: "rgba(232,228,220,0.5)", fontSize: 10 } : false}>
                 {chartData.map((_, i) => <Cell key={i} fill={showTotal ? colors[i] : "transparent"} />)}
               </Bar>
