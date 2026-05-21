@@ -413,7 +413,7 @@ export default function DashboardView({ initialData, password }) {
           <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>{descText}</div>
           <ResponsiveContainer width="100%" height={Math.max(320, chartData.length * 60 + 110)}>
             <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 0, left: 20 }} barCategoryGap="28%">
-              <XAxis dataKey="name" type="category" tick={<MultiLineTick />} axisLine={false} tickLine={false} interval={0} height={56} scale="band" />
+              <XAxis dataKey="name" tick={<MultiLineTick />} axisLine={false} tickLine={false} interval={0} height={56} />
               <YAxis hide domain={[0, yMax * 1.25]} />
               <Tooltip content={<ChartTip showTotal={showTotal} showAvg={showAvg} />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
               {/* 항상 Bar 렌더링 → band scale 고정. showTotal=false면 dataKey를 'avg'로 전환해 스케일 일치, 색은 투명 처리 */}
