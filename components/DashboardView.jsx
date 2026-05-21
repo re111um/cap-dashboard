@@ -96,7 +96,12 @@ function UploadPanel({ password, onSuccess }) {
     }
     setStatus("loading");
     try {
-      const text = await file.text();
+      const buffer = await file.arrayBuffer();
+      let text = new TextDecoder("utf-8").decode(buffer);
+      // UTF-8로 읽었을 때 한글 키워드가 없으면 EUC-KR로 재디코딩
+      if (!text.includes("본부") && !text.includes("계약")) {
+        text = new TextDecoder("euc-kr").decode(buffer);
+      }
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -223,7 +228,7 @@ export default function DashboardView({ initialData, password }) {
   const chartData = tabData?.agg || [];
   const distData = tabData?.dist || [];
   const colors = useMemo(() => barColors(chartData.length), [chartData.length]);
-  const xMax = useMemo(() => {
+  const yMax = useMemo(() => {
     if (!chartData.length) return 1;
     const vals = [
       ...(showTotal ? chartData.map((d) => d.total) : []),
@@ -380,19 +385,20 @@ export default function DashboardView({ initialData, password }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>{descText}</div>
-          <ResponsiveContainer width="100%" height={Math.max(320, chartData.length * 52 + 40)}>
-            <ComposedChart data={chartData} layout="vertical" margin={{ top: 0, right: 70, bottom: 0, left: 8 }} barCategoryGap="28%">
-              <XAxis type="number" hide domain={[0, xMax * 1.2]} />
-              <YAxis type="category" dataKey="name" width={140} tick={{ fill: "rgba(232,228,220,0.7)", fontSize: 13, fontWeight: 500 }} axisLine={false} tickLine={false} />
+          <ResponsiveContainer width="100%" height={380}>
+            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 100, left: 10 }} barCategoryGap="28%">
+              <XAxis dataKey="name" tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} interval={0} angle={-40} textAnchor="end" height={100} />
+              <YAxis hide domain={[0, yMax * 1.25]} />
               <Tooltip content={<ChartTip showTotal={showTotal} showAvg={showAvg} />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
               {showTotal && (
-                <Bar dataKey="total" radius={[0, 6, 6, 0]} label={{ position: "right", formatter: (v) => fmt(v), fill: "rgba(232,228,220,0.5)", fontSize: 11 }}>
+                <Bar dataKey="total" radius={[6, 6, 0, 0]}
+                  label={{ position: "top", formatter: (v) => fmt(v), fill: "rgba(232,228,220,0.5)", fontSize: 10 }}>
                   {chartData.map((_, i) => <Cell key={i} fill={colors[i]} />)}
                 </Bar>
               )}
               {showAvg && (
-                <Line type="monotone" dataKey="avg" stroke="#4AC978" strokeWidth={2} dot={{ r: 5, fill: "#4AC978", stroke: "rgba(15,18,30,0.8)", strokeWidth: 2 }}
-                  label={!showTotal ? { position: "right", formatter: (v) => fmt(v), fill: "#4AC978", fontSize: 11 } : false} />
+                <Line type="linear" dataKey="avg" stroke="#4AC978" strokeWidth={2} dot={{ r: 5, fill: "#4AC978", stroke: "rgba(15,18,30,0.8)", strokeWidth: 2 }}
+                  label={!showTotal ? { position: "top", formatter: (v) => fmt(v), fill: "#4AC978", fontSize: 10 } : false} />
               )}
             </ComposedChart>
           </ResponsiveContainer>
