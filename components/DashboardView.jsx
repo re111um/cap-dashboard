@@ -213,6 +213,7 @@ export default function DashboardView({ initialData, password }) {
   const [incPerf, setIncPerf] = useState(false);
   const [showTotal, setShowTotal] = useState(true);
   const [showAvg, setShowAvg] = useState(false);
+  const [chartUnit, setChartUnit] = useState("year"); // 'year' | 'month'
   const [asOfDate, setAsOfDate] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [data, setData] = useState(initialData);
@@ -252,14 +253,35 @@ export default function DashboardView({ initialData, password }) {
   const chartData = tabData?.agg || [];
   const distData = tabData?.dist || [];
   const colors = useMemo(() => barColors(chartData.length), [chartData.length]);
+  // 월/연 토글에 따라 차트·분포도 값을 스케일링 (백엔드 데이터는 연 단위 그대로 유지)
+  const scaledChartData = useMemo(() => {
+    if (chartUnit === "year") return chartData;
+    return chartData.map((d) => ({
+      ...d,
+      total: Math.round(d.total / 12),
+      avg: Math.round(d.avg / 12),
+      retInc: Math.round(d.retInc / 12),
+      perfInc: Math.round(d.perfInc / 12),
+    }));
+  }, [chartData, chartUnit]);
+  const scaledDistData = useMemo(() => {
+    if (chartUnit === "year") return distData;
+    return distData.map((d) => ({
+      ...d,
+      min: Math.round(d.min / 12),
+      median: Math.round(d.median / 12),
+      max: Math.round(d.max / 12),
+    }));
+  }, [distData, chartUnit]);
   const yMax = useMemo(() => {
-    if (!chartData.length) return 1;
+    if (!scaledChartData.length) return 1;
     const vals = [
-      ...(showTotal ? chartData.map((d) => d.total) : []),
-      ...(showAvg ? chartData.map((d) => d.avg) : []),
+      ...(showTotal ? scaledChartData.map((d) => d.total) : []),
+      ...(showAvg ? scaledChartData.map((d) => d.avg) : []),
     ];
     return Math.max(...vals, 1);
-  }, [chartData, showTotal, showAvg]);
+  }, [scaledChartData, showTotal, showAvg]);
+  const unitLabel = chartUnit === "month" ? "월급" : "연봉";
 
   const S = {
     wrap: { minHeight: "100vh", background: "linear-gradient(160deg,#0A0F1C,#111827,#150F20)", fontFamily: "'Noto Sans KR','Pretendard',sans-serif", color: "#E8E4DC", padding: "32px 24px" },
@@ -403,23 +425,28 @@ export default function DashboardView({ initialData, password }) {
 
         {/* Bar Chart */}
         <div style={S.panel}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: 8, marginBottom: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{curLabel} 연봉</div>
-            <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: 8, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{curLabel} {unitLabel}</div>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: 2 }}>
+                {[{ k: "year", l: "연" }, { k: "month", l: "월" }].map((u) => (
+                  <button key={u.k} onClick={() => setChartUnit(u.k)} style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: chartUnit === u.k ? "rgba(94,81,255,0.2)" : "transparent", color: chartUnit === u.k ? "#A89BFF" : "rgba(232,228,220,0.45)", fontSize: 11, fontWeight: chartUnit === u.k ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>{u.l}</button>
+                ))}
+              </div>
               <ChkLabel on={showTotal} onClick={toggleTotal} label="합계" color={BASE} disabled={showTotal && !showAvg} />
               <ChkLabel on={showAvg} onClick={toggleAvg} label="평균" color="#4AC978" disabled={showAvg && !showTotal} />
             </div>
           </div>
           <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>{descText}</div>
-          <ResponsiveContainer width="100%" height={Math.max(320, chartData.length * 60 + 110)}>
-            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 0, left: 20 }} barCategoryGap="28%">
+          <ResponsiveContainer width="100%" height={Math.max(320, scaledChartData.length * 60 + 110)}>
+            <ComposedChart data={scaledChartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 0, left: 20 }} barCategoryGap="28%">
               <XAxis dataKey="name" tick={<MultiLineTick />} axisLine={false} tickLine={false} interval={0} height={56} />
               <YAxis hide domain={[0, yMax * 1.25]} />
               <Tooltip content={<ChartTip showTotal={showTotal} showAvg={showAvg} />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
               {/* 항상 Bar 렌더링 → band scale 고정. showTotal=false면 dataKey를 'avg'로 전환해 스케일 일치, 색은 투명 처리 */}
               <Bar dataKey={showTotal ? "total" : "avg"} radius={[6, 6, 0, 0]} isAnimationActive={false}
                 label={showTotal ? { position: "top", formatter: (v) => fmt(v), fill: "rgba(232,228,220,0.5)", fontSize: 10 } : false}>
-                {chartData.map((_, i) => <Cell key={i} fill={showTotal ? colors[i] : "transparent"} />)}
+                {scaledChartData.map((_, i) => <Cell key={i} fill={showTotal ? colors[i] : "transparent"} />)}
               </Bar>
               {showAvg && (
                 <Line type="linear" dataKey="avg" stroke="#4AC978" strokeWidth={2} dot={{ r: 5, fill: "#4AC978", stroke: "rgba(15,18,30,0.8)", strokeWidth: 2 }}
@@ -431,9 +458,9 @@ export default function DashboardView({ initialData, password }) {
 
         {/* Range Chart */}
         <div style={S.panel}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4, paddingLeft: 8 }}>{curLabel} 연봉 분포</div>
-          <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 16, paddingLeft: 8 }}>개인 연봉 기준 최저 / 중간값 / 최고</div>
-          <RangeChart distData={distData} />
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4, paddingLeft: 8 }}>{curLabel} {unitLabel} 분포</div>
+          <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 16, paddingLeft: 8 }}>개인 {unitLabel} 기준 최저 / 중간값 / 최고</div>
+          <RangeChart distData={scaledDistData} />
         </div>
 
         {/* Table */}
