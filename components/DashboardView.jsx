@@ -1,8 +1,8 @@
 "use client";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, Cell, Legend,
+  ResponsiveContainer, Cell,
 } from "recharts";
 
 const BASE = "#5E51FF";
@@ -80,6 +80,100 @@ function RangeChart({ distData }) {
   );
 }
 
+/* ─── Upload Panel ─── */
+function UploadPanel({ password, onSuccess }) {
+  const [dragging, setDragging] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [count, setCount] = useState(0);
+  const [errMsg, setErrMsg] = useState("");
+  const inputRef = useRef(null);
+
+  const handleFile = async (file) => {
+    if (!file || !file.name.toLowerCase().endsWith(".csv")) {
+      setStatus("error");
+      setErrMsg("CSV 파일만 업로드 가능합니다.");
+      return;
+    }
+    setStatus("loading");
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password, csvText: text }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setStatus("success");
+        setCount(d.count);
+        onSuccess();
+      } else {
+        setStatus("error");
+        setErrMsg(
+          d.error === "parse_failed" ? "CSV 파싱 실패. 파일 형식을 확인해주세요." :
+          d.error === "unauthorized" ? "비밀번호 오류가 발생했습니다." :
+          "업로드에 실패했습니다."
+        );
+      }
+    } catch {
+      setStatus("error");
+      setErrMsg("네트워크 오류가 발생했습니다.");
+    }
+  };
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]); }}
+      onClick={() => status !== "loading" && status !== "success" && inputRef.current?.click()}
+      style={{
+        border: `1.5px dashed ${
+          dragging ? BASE :
+          status === "success" ? "#4AC978" :
+          status === "error" ? "#E85454" :
+          "rgba(255,255,255,0.12)"
+        }`,
+        borderRadius: 10,
+        padding: "24px 20px",
+        textAlign: "center",
+        cursor: status === "loading" || status === "success" ? "default" : "pointer",
+        background: dragging ? "rgba(94,81,255,0.05)" : "transparent",
+        transition: "border-color .2s, background .2s",
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv"
+        style={{ display: "none" }}
+        onChange={(e) => { handleFile(e.target.files[0]); e.target.value = ""; }}
+      />
+      {status === "loading" && <div style={{ color: "rgba(232,228,220,0.4)", fontSize: 13 }}>업로드 중...</div>}
+      {status === "success" && (
+        <div style={{ color: "#4AC978", fontSize: 13 }}>{count}명 데이터 업로드 완료. 대시보드가 갱신됩니다.</div>
+      )}
+      {status === "error" && (
+        <div>
+          <div style={{ color: "#E85454", fontSize: 13, marginBottom: 10 }}>{errMsg}</div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setStatus(null); }}
+            style={{ background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "rgba(232,228,220,0.4)", fontSize: 11, padding: "3px 10px", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+      {!status && (
+        <>
+          <div style={{ fontSize: 13, color: "rgba(232,228,220,0.4)", marginBottom: 4 }}>CSV 파일을 드래그하거나 클릭하여 선택</div>
+          <div style={{ fontSize: 11, color: "rgba(232,228,220,0.2)" }}>업로드 시 기존 데이터가 즉시 교체됩니다</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main Dashboard ─── */
 export default function DashboardView({ initialData, password }) {
   const [tab, setTab] = useState("dept");
@@ -88,6 +182,8 @@ export default function DashboardView({ initialData, password }) {
   const [hideClv, setHideClv] = useState(false);
   const [showTotal, setShowTotal] = useState(true);
   const [showAvg, setShowAvg] = useState(false);
+  const [asOfDate, setAsOfDate] = useState("");
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [data, setData] = useState(initialData);
   const [fetching, setFetching] = useState(false);
 
@@ -101,12 +197,13 @@ export default function DashboardView({ initialData, password }) {
         incRet: opts.incRet ?? incRet,
         incPerf: opts.incPerf ?? incPerf,
         hideClv: opts.hideClv ?? hideClv,
+        asOfDate: "asOfDate" in opts ? opts.asOfDate : asOfDate,
       }),
     });
     const d = await res.json();
     if (!d.error) setData(d);
     setFetching(false);
-  }, [password, incRet, incPerf, hideClv]);
+  }, [password, incRet, incPerf, hideClv, asOfDate]);
 
   const toggle = (field, current) => {
     const next = !current;
@@ -120,10 +217,20 @@ export default function DashboardView({ initialData, password }) {
   const toggleTotal = () => { if (showTotal && !showAvg) return; setShowTotal(!showTotal); };
   const toggleAvg = () => { if (showAvg && !showTotal) return; setShowAvg(!showAvg); };
 
+  const handleUploadSuccess = useCallback(() => { refetch({}); }, [refetch]);
+
   const tabData = data?.tabs?.[tab];
   const chartData = tabData?.agg || [];
   const distData = tabData?.dist || [];
   const colors = useMemo(() => barColors(chartData.length), [chartData.length]);
+  const xMax = useMemo(() => {
+    if (!chartData.length) return 1;
+    const vals = [
+      ...(showTotal ? chartData.map((d) => d.total) : []),
+      ...(showAvg ? chartData.map((d) => d.avg) : []),
+    ];
+    return Math.max(...vals, 1);
+  }, [chartData, showTotal, showAvg]);
 
   const S = {
     wrap: { minHeight: "100vh", background: "linear-gradient(160deg,#0A0F1C,#111827,#150F20)", fontFamily: "'Noto Sans KR','Pretendard',sans-serif", color: "#E8E4DC", padding: "32px 24px" },
@@ -148,7 +255,12 @@ export default function DashboardView({ initialData, password }) {
 
   return (
     <div style={S.wrap}>
-      <style>{`*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}`}</style>
+      <style>{`
+        *{box-sizing:border-box;margin:0;padding:0}
+        ::-webkit-scrollbar{width:4px}
+        ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}
+        input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.55);cursor:pointer}
+      `}</style>
       <div style={{ maxWidth: 960, margin: "0 auto" }}>
 
         {/* Header */}
@@ -156,14 +268,43 @@ export default function DashboardView({ initialData, password }) {
           <div>
             <div style={{ fontSize: 11, letterSpacing: 4, color: BASE, textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>Featuring</div>
             <h1 style={{ fontSize: 28, fontWeight: 800, color: "#fff", margin: 0 }}>연봉 대시보드</h1>
-            <div style={{ fontSize: 13, color: "rgba(232,228,220,0.4)", marginTop: 4 }}>총 {data.totalCount}명</div>
+            <div style={{ fontSize: 13, color: "rgba(232,228,220,0.4)", marginTop: 4 }}>
+              총 {data.totalCount}명
+              {asOfDate && <span style={{ color: opacity(0.7), marginLeft: 8 }}>({asOfDate} 기준 재직자)</span>}
+            </div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>총 연봉 합계</div>
             <div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>{fmt(data.totalSalary)}</div>
             <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>월 {fmt(data.monthlySalary)}</div>
+            <button
+              onClick={() => setUploadOpen(!uploadOpen)}
+              style={{
+                marginTop: 10,
+                background: uploadOpen ? "rgba(94,81,255,0.12)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${uploadOpen ? opacity(0.3) : "rgba(255,255,255,0.08)"}`,
+                borderRadius: 6,
+                color: uploadOpen ? "#A89BFF" : "rgba(232,228,220,0.4)",
+                fontSize: 11,
+                padding: "4px 12px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "all .15s",
+              }}
+            >
+              데이터 업데이트
+            </button>
           </div>
         </div>
+
+        {/* Upload Panel */}
+        {uploadOpen && (
+          <div style={{ ...S.panel, marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", marginBottom: 6, paddingLeft: 4 }}>데이터 교체</div>
+            <div style={{ fontSize: 12, color: "rgba(232,228,220,0.3)", marginBottom: 16, paddingLeft: 4 }}>연봉 양식 CSV를 업로드하면 기존 데이터가 즉시 교체됩니다.</div>
+            <UploadPanel password={password} onSuccess={handleUploadSuccess} />
+          </div>
+        )}
 
         {/* Cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 28 }}>
@@ -180,7 +321,7 @@ export default function DashboardView({ initialData, password }) {
         </div>
 
         {/* Controls */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: 3 }}>
             {TABS.map((t) => <button key={t.key} onClick={() => setTab(t.key)} style={S.tabBtn(tab === t.key)}>{t.label}</button>)}
           </div>
@@ -191,9 +332,45 @@ export default function DashboardView({ initialData, password }) {
           </div>
         </div>
 
+        {/* Date Filter */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, paddingLeft: 4 }}>
+          <span style={{ fontSize: 12, color: "rgba(232,228,220,0.3)" }}>기준일</span>
+          <input
+            type="date"
+            value={asOfDate}
+            onChange={(e) => {
+              const val = e.target.value;
+              setAsOfDate(val);
+              refetch({ asOfDate: val });
+            }}
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: `1px solid ${asOfDate ? opacity(0.35) : "rgba(255,255,255,0.08)"}`,
+              borderRadius: 6,
+              color: asOfDate ? "#E8E4DC" : "rgba(232,228,220,0.3)",
+              padding: "5px 10px",
+              fontSize: 12,
+              fontFamily: "inherit",
+              cursor: "pointer",
+              colorScheme: "dark",
+              outline: "none",
+            }}
+          />
+          {asOfDate ? (
+            <button
+              onClick={() => { setAsOfDate(""); refetch({ asOfDate: "" }); }}
+              style={{ background: "none", border: "none", color: "rgba(232,228,220,0.35)", cursor: "pointer", fontSize: 12, padding: "2px 6px", fontFamily: "inherit" }}
+            >
+              초기화
+            </button>
+          ) : (
+            <span style={{ fontSize: 11, color: "rgba(232,228,220,0.2)" }}>날짜 설정 시 입사일 기준으로 재직자를 필터링합니다</span>
+          )}
+        </div>
+
         {fetching && <div style={{ textAlign: "center", padding: 20, color: "rgba(232,228,220,0.4)", fontSize: 13 }}>데이터 갱신 중...</div>}
 
-        {/* Bar + Line Chart */}
+        {/* Bar Chart */}
         <div style={S.panel}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: 8, marginBottom: 4 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{curLabel} 연봉</div>
@@ -205,7 +382,7 @@ export default function DashboardView({ initialData, password }) {
           <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>{descText}</div>
           <ResponsiveContainer width="100%" height={Math.max(320, chartData.length * 52 + 40)}>
             <ComposedChart data={chartData} layout="vertical" margin={{ top: 0, right: 70, bottom: 0, left: 8 }} barCategoryGap="28%">
-              <XAxis type="number" hide />
+              <XAxis type="number" hide domain={[0, xMax * 1.2]} />
               <YAxis type="category" dataKey="name" width={140} tick={{ fill: "rgba(232,228,220,0.7)", fontSize: 13, fontWeight: 500 }} axisLine={false} tickLine={false} />
               <Tooltip content={<ChartTip showTotal={showTotal} showAvg={showAvg} />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
               {showTotal && (

@@ -19,19 +19,25 @@ export async function POST(request) {
 
     const encryptedJson = encrypt(csvText, process.env.ENCRYPTION_KEY);
 
-    // 로컬 개발 환경에서는 파일로 저장 (Vercel에서는 읽기 전용이므로 무시됨)
+    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+      try {
+        const { kv } = await import("@vercel/kv");
+        await kv.set("cap_encrypted", encryptedJson);
+      } catch (e) {
+        console.error("KV 저장 실패:", e);
+      }
+    }
+
     try {
       writeFileSync(join(process.cwd(), "data", "encrypted.json"), encryptedJson);
     } catch {}
 
-    // 집계 미리보기 반환
-    const preview = computeAll(rawData, { incRet: false, incPerf: false, hideClv: false });
+    const preview = computeAll(rawData, { incRet: false, incPerf: false, hideClv: false, asOfDate: null });
 
     return NextResponse.json({
       success: true,
       count: rawData.length,
       preview,
-      encryptedFile: encryptedJson, // 클라이언트에서 다운로드용
     });
   } catch (e) {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
