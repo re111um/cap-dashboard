@@ -389,9 +389,9 @@ export default function DashboardView({ initialData, password }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>{descText}</div>
-          <ResponsiveContainer width="100%" height={Math.max(360, chartData.length * 60 + 120)}>
-            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 0, left: 10 }} barCategoryGap="28%">
-              <XAxis dataKey="name" tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} interval={0} angle={-40} textAnchor="end" height={90} />
+          <ResponsiveContainer width="100%" height={Math.max(320, chartData.length * 60 + 100)}>
+            <ComposedChart data={chartData} layout="horizontal" margin={{ top: 28, right: 20, bottom: 0, left: 20 }} barCategoryGap="28%">
+              <XAxis dataKey="name" tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} interval={0} height={50} scale="band" />
               <YAxis hide domain={[0, yMax * 1.25]} />
               <Tooltip content={<ChartTip showTotal={showTotal} showAvg={showAvg} />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
               {showTotal && (
