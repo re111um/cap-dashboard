@@ -229,6 +229,7 @@ export default function DashboardView({ initialData, password }) {
         incRet: opts.incRet ?? incRet,
         incPerf: opts.incPerf ?? incPerf,
         asOfDate: "asOfDate" in opts ? opts.asOfDate : asOfDate,
+        force: !!opts.force,
       }),
     });
     const d = await res.json();
@@ -331,23 +332,43 @@ export default function DashboardView({ initialData, password }) {
             <div style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>총 연봉 합계</div>
             <div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>{fmt(data.totalSalary)}</div>
             <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>월 {fmt(data.monthlySalary)}</div>
-            <button
-              onClick={() => setUploadOpen(!uploadOpen)}
-              style={{
-                marginTop: 10,
-                background: uploadOpen ? "rgba(94,81,255,0.12)" : "rgba(255,255,255,0.04)",
-                border: `1px solid ${uploadOpen ? opacity(0.3) : "rgba(255,255,255,0.08)"}`,
-                borderRadius: 6,
-                color: uploadOpen ? "#A89BFF" : "rgba(232,228,220,0.4)",
-                fontSize: 11,
-                padding: "4px 12px",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                transition: "all .15s",
-              }}
-            >
-              데이터 업데이트
-            </button>
+            <div style={{ display: "flex", gap: 6, marginTop: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => refetch({ force: true })}
+                disabled={fetching}
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 6,
+                  color: "rgba(232,228,220,0.4)",
+                  fontSize: 11,
+                  padding: "4px 12px",
+                  cursor: fetching ? "wait" : "pointer",
+                  fontFamily: "inherit",
+                  transition: "all .15s",
+                  opacity: fetching ? 0.6 : 1,
+                }}
+                title="Drive에서 최신 데이터를 즉시 다시 가져옵니다"
+              >
+                {fetching ? "갱신 중..." : "↻ 새로고침"}
+              </button>
+              <button
+                onClick={() => setUploadOpen(!uploadOpen)}
+                style={{
+                  background: uploadOpen ? "rgba(94,81,255,0.12)" : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${uploadOpen ? opacity(0.3) : "rgba(255,255,255,0.08)"}`,
+                  borderRadius: 6,
+                  color: uploadOpen ? "#A89BFF" : "rgba(232,228,220,0.4)",
+                  fontSize: 11,
+                  padding: "4px 12px",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  transition: "all .15s",
+                }}
+              >
+                데이터 업데이트
+              </button>
+            </div>
           </div>
         </div>
 
