@@ -22,8 +22,7 @@ async function getKV() {
  * 우선순위:
  * 1. force=true가 아니면 KV 캐시 확인 (5분 TTL)
  * 2. Drive 연동 설정 시 Drive에서 fetch → 서버에서 재암호화 → KV에 캐싱
- * 3. KV 수동 업로드 데이터 (cap_encrypted)
- * 4. 로컬 파일 (data/encrypted.json)
+ * 3. 로컬 파일 (data/encrypted.json) — Drive 장애 시 최종 fallback
  */
 async function loadEncryptedData(force = false) {
   const kv = await getKV();
@@ -50,13 +49,6 @@ async function loadEncryptedData(force = false) {
     } catch (e) {
       console.error("Drive fetch 실패:", e.message);
     }
-  }
-
-  if (kv) {
-    try {
-      const uploaded = await kv.get("cap_encrypted");
-      if (uploaded) return { encryptedJson: uploaded, source: "kv" };
-    } catch {}
   }
 
   const filePath = join(process.cwd(), "data", "encrypted.json");
