@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo, useCallback } from "react";
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
+  ComposedChart, Bar, Line, LineChart, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell,
 } from "recharts";
 
@@ -41,6 +41,25 @@ function MultiLineTick({ x, y, payload }) {
         </text>
       ))}
     </g>
+  );
+}
+
+/* ─── Trend Tooltip (12개월 추이용) ─── */
+function TrendTip({ active, payload, label, groupColorMap }) {
+  if (!active || !payload?.length) return null;
+  const [y, m] = (label || "").split("-");
+  const items = payload.filter((p) => p.dataKey !== "_overallAvg" && typeof p.value === "number");
+  items.sort((a, b) => b.value - a.value);
+  return (
+    <div style={{ background: "rgba(15,18,30,0.96)", border: `1px solid ${opacity(0.25)}`, borderRadius: 10, padding: "12px 16px", color: "#E8E4DC", fontSize: 12, lineHeight: 1.7, maxWidth: 280 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 6 }}>{y}년 {parseInt(m, 10)}월</div>
+      {items.map((p, i) => (
+        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+          <span style={{ color: groupColorMap?.[p.dataKey] || "rgba(232,228,220,0.7)" }}>{p.dataKey}</span>
+          <span style={{ color: "#fff", fontWeight: 600 }}>{fmt(p.value)}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -107,14 +126,34 @@ function RangeChart({ distData }) {
 }
 
 /* ─── Main Dashboard ─── */
+// 오늘 기준 현재 월을 "YYYY-MM" 형식으로 반환
+function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// "YYYY-MM" → "YYYY년 M월" 표시 변환
+function formatMonth(m) {
+  if (!m) return "전체";
+  const [y, mo] = m.split("-");
+  return `${y}년 ${parseInt(mo, 10)}월`;
+}
+
+// "YYYY-MM" 에서 offset 만큼 월 이동한 결과 반환
+function shiftMonthStr(base, offset) {
+  const [y, m] = base.split("-").map(Number);
+  const d = new Date(y, m - 1 + offset, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export default function DashboardView({ initialData, password }) {
   const [tab, setTab] = useState("dept");
   const [incRet, setIncRet] = useState(false);
   const [incPerf, setIncPerf] = useState(false);
   const [showTotal, setShowTotal] = useState(true);
   const [showAvg, setShowAvg] = useState(false);
-  const [chartUnit, setChartUnit] = useState("year"); // 'year' | 'month'
-  const [asOfDate, setAsOfDate] = useState("");
+  const [chartUnit, setChartUnit] = useState("year"); // 'year' | 'month' — asOfMonth 없을 때만 적용
+  const [asOfMonth, setAsOfMonth] = useState(currentMonth); // 초기 진입 시 현재 월 (Q2)
   const [data, setData] = useState(initialData);
   const [fetching, setFetching] = useState(false);
 
@@ -127,14 +166,14 @@ export default function DashboardView({ initialData, password }) {
         password,
         incRet: opts.incRet ?? incRet,
         incPerf: opts.incPerf ?? incPerf,
-        asOfDate: "asOfDate" in opts ? opts.asOfDate : asOfDate,
+        asOfMonth: "asOfMonth" in opts ? opts.asOfMonth : asOfMonth,
         force: !!opts.force,
       }),
     });
     const d = await res.json();
     if (!d.error) setData(d);
     setFetching(false);
-  }, [password, incRet, incPerf, asOfDate]);
+  }, [password, incRet, incPerf, asOfMonth]);
 
   const toggle = (field, current) => {
     const next = !current;
@@ -147,13 +186,23 @@ export default function DashboardView({ initialData, password }) {
   const toggleTotal = () => { if (showTotal && !showAvg) return; setShowTotal(!showTotal); };
   const toggleAvg = () => { if (showAvg && !showTotal) return; setShowAvg(!showAvg); };
 
+  // 월 네비게이션 활성 시 자동으로 "월" 단위 표시 (Q1: A안)
+  const effectiveChartUnit = asOfMonth ? "month" : chartUnit;
+
   const tabData = data?.tabs?.[tab];
   const chartData = tabData?.agg || [];
   const distData = tabData?.dist || [];
+  const trendData = tabData?.trend || [];
   const colors = useMemo(() => barColors(chartData.length), [chartData.length]);
-  // 월/연 토글에 따라 차트·분포도 값을 스케일링 (백엔드 데이터는 연 단위 그대로 유지)
+  // 메인 차트와 동일한 그룹 색상 매핑 (라인 차트에서 재사용)
+  const groupColorMap = useMemo(() => {
+    const map = {};
+    chartData.forEach((d, i) => { map[d.name] = colors[i]; });
+    return map;
+  }, [chartData, colors]);
+  // 월/연 표시 단위에 따라 차트·분포도 값을 스케일링 (백엔드 데이터는 연 단위 그대로 유지)
   const scaledChartData = useMemo(() => {
-    if (chartUnit === "year") return chartData;
+    if (effectiveChartUnit === "year") return chartData;
     return chartData.map((d) => ({
       ...d,
       total: Math.round(d.total / 12),
@@ -161,16 +210,35 @@ export default function DashboardView({ initialData, password }) {
       retInc: Math.round(d.retInc / 12),
       perfInc: Math.round(d.perfInc / 12),
     }));
-  }, [chartData, chartUnit]);
+  }, [chartData, effectiveChartUnit]);
   const scaledDistData = useMemo(() => {
-    if (chartUnit === "year") return distData;
+    if (effectiveChartUnit === "year") return distData;
     return distData.map((d) => ({
       ...d,
       min: Math.round(d.min / 12),
       median: Math.round(d.median / 12),
       max: Math.round(d.max / 12),
     }));
-  }, [distData, chartUnit]);
+  }, [distData, effectiveChartUnit]);
+  // 12개월 추이 데이터 스케일링 (month 키 외 모두 /12)
+  const scaledTrendData = useMemo(() => {
+    if (effectiveChartUnit === "year") return trendData;
+    return trendData.map((row) => {
+      const scaled = { month: row.month };
+      for (const k in row) {
+        if (k !== "month") scaled[k] = Math.round(row[k] / 12);
+      }
+      return scaled;
+    });
+  }, [trendData, effectiveChartUnit]);
+  // 12개월 전사 평균 인상률
+  const trendOverallChange = useMemo(() => {
+    if (scaledTrendData.length < 2) return null;
+    const first = scaledTrendData.find((d) => d._overallAvg > 0)?._overallAvg;
+    const last = scaledTrendData[scaledTrendData.length - 1]?._overallAvg;
+    if (!first || !last) return null;
+    return +(((last - first) / first) * 100).toFixed(1);
+  }, [scaledTrendData]);
   const yMax = useMemo(() => {
     if (!scaledChartData.length) return 1;
     const vals = [
@@ -179,7 +247,7 @@ export default function DashboardView({ initialData, password }) {
     ];
     return Math.max(...vals, 1);
   }, [scaledChartData, showTotal, showAvg]);
-  const unitLabel = chartUnit === "month" ? "월급" : "연봉";
+  const unitLabel = effectiveChartUnit === "month" ? "월급" : "연봉";
 
   const S = {
     wrap: { minHeight: "100vh", background: "linear-gradient(160deg,#0A0F1C,#111827,#150F20)", fontFamily: "'Noto Sans KR','Pretendard',sans-serif", color: "#E8E4DC", padding: "32px 24px" },
@@ -222,13 +290,19 @@ export default function DashboardView({ initialData, password }) {
             <h1 style={{ fontSize: 28, fontWeight: 800, color: "#fff", margin: 0 }}>연봉 대시보드</h1>
             <div style={{ fontSize: 13, color: "rgba(232,228,220,0.4)", marginTop: 4 }}>
               총 {data.totalCount}명
-              {asOfDate && <span style={{ color: opacity(0.7), marginLeft: 8 }}>({asOfDate} 기준 재직자)</span>}
+              {asOfMonth && <span style={{ color: opacity(0.7), marginLeft: 8 }}>({formatMonth(asOfMonth)} 기준 재직자)</span>}
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>총 연봉 합계</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>{fmt(data.totalSalary)}</div>
-            <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>월 {fmt(data.monthlySalary)}</div>
+            <div style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>
+              {asOfMonth ? `${formatMonth(asOfMonth)} 월급 합계` : "총 연봉 합계"}
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>
+              {asOfMonth ? fmt(data.monthlySalary) : fmt(data.totalSalary)}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>
+              {asOfMonth ? `연 환산 ${fmt(data.totalSalary)}` : `월 ${fmt(data.monthlySalary)}`}
+            </div>
             <button
               onClick={() => refetch({ force: true })}
               disabled={fetching}
@@ -277,39 +351,40 @@ export default function DashboardView({ initialData, password }) {
           </div>
         </div>
 
-        {/* Date Filter */}
+        {/* Month Navigation */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, paddingLeft: 4 }}>
-          <span style={{ fontSize: 12, color: "rgba(232,228,220,0.3)" }}>기준일</span>
-          <input
-            type="date"
-            value={asOfDate}
-            onChange={(e) => {
-              const val = e.target.value;
-              setAsOfDate(val);
-              refetch({ asOfDate: val });
-            }}
-            style={{
-              background: "rgba(255,255,255,0.05)",
-              border: `1px solid ${asOfDate ? opacity(0.35) : "rgba(255,255,255,0.08)"}`,
-              borderRadius: 6,
-              color: asOfDate ? "#E8E4DC" : "rgba(232,228,220,0.3)",
-              padding: "5px 10px",
-              fontSize: 12,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              colorScheme: "dark",
-              outline: "none",
-            }}
-          />
-          {asOfDate ? (
-            <button
-              onClick={() => { setAsOfDate(""); refetch({ asOfDate: "" }); }}
-              style={{ background: "none", border: "none", color: "rgba(232,228,220,0.35)", cursor: "pointer", fontSize: 12, padding: "2px 6px", fontFamily: "inherit" }}
-            >
-              초기화
-            </button>
+          <span style={{ fontSize: 12, color: "rgba(232,228,220,0.3)" }}>기준 월</span>
+          {asOfMonth ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.05)", border: `1px solid ${opacity(0.25)}`, borderRadius: 6, padding: "3px 6px" }}>
+                <button
+                  onClick={() => { const m = shiftMonthStr(asOfMonth, -1); setAsOfMonth(m); refetch({ asOfMonth: m }); }}
+                  style={{ background: "transparent", border: "none", color: "#A89BFF", fontSize: 13, cursor: "pointer", padding: "2px 8px", fontFamily: "inherit", lineHeight: 1 }}
+                  title="이전 달"
+                >◀</button>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#E8E4DC", minWidth: 80, textAlign: "center" }}>{formatMonth(asOfMonth)}</span>
+                <button
+                  onClick={() => { const m = shiftMonthStr(asOfMonth, 1); setAsOfMonth(m); refetch({ asOfMonth: m }); }}
+                  style={{ background: "transparent", border: "none", color: "#A89BFF", fontSize: 13, cursor: "pointer", padding: "2px 8px", fontFamily: "inherit", lineHeight: 1 }}
+                  title="다음 달"
+                >▶</button>
+              </div>
+              <button
+                onClick={() => { setAsOfMonth(""); refetch({ asOfMonth: "" }); }}
+                style={{ background: "none", border: "none", color: "rgba(232,228,220,0.35)", cursor: "pointer", fontSize: 12, padding: "2px 6px", fontFamily: "inherit" }}
+                title="월 필터를 해제하고 전체 인원/연봉 단위로 표시"
+              >
+                전체 보기
+              </button>
+            </>
           ) : (
-            <span style={{ fontSize: 11, color: "rgba(232,228,220,0.2)" }}>날짜 설정 시 입사일 기준으로 재직자를 필터링합니다</span>
+            <button
+              onClick={() => { const m = currentMonth(); setAsOfMonth(m); refetch({ asOfMonth: m }); }}
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, color: "rgba(232,228,220,0.6)", fontSize: 11, padding: "4px 12px", cursor: "pointer", fontFamily: "inherit" }}
+              title="월별 추이 보기 모드로 전환"
+            >
+              이번 달부터 보기
+            </button>
           )}
         </div>
 
@@ -320,11 +395,14 @@ export default function DashboardView({ initialData, password }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: 8, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{curLabel} {unitLabel}</div>
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: 2 }}>
-                {[{ k: "year", l: "연" }, { k: "month", l: "월" }].map((u) => (
-                  <button key={u.k} onClick={() => setChartUnit(u.k)} style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: chartUnit === u.k ? "rgba(94,81,255,0.2)" : "transparent", color: chartUnit === u.k ? "#A89BFF" : "rgba(232,228,220,0.45)", fontSize: 11, fontWeight: chartUnit === u.k ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>{u.l}</button>
-                ))}
-              </div>
+              {/* 월 네비게이션 활성 시 연/월 토글 숨김 (자동으로 "월" 단위 적용) */}
+              {!asOfMonth && (
+                <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: 2 }}>
+                  {[{ k: "year", l: "연" }, { k: "month", l: "월" }].map((u) => (
+                    <button key={u.k} onClick={() => setChartUnit(u.k)} style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: chartUnit === u.k ? "rgba(94,81,255,0.2)" : "transparent", color: chartUnit === u.k ? "#A89BFF" : "rgba(232,228,220,0.45)", fontSize: 11, fontWeight: chartUnit === u.k ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>{u.l}</button>
+                  ))}
+                </div>
+              )}
               <ChkLabel on={showTotal} onClick={toggleTotal} label="합계" color={BASE} disabled={showTotal && !showAvg} />
               <ChkLabel on={showAvg} onClick={toggleAvg} label="평균" color="#4AC978" disabled={showAvg && !showTotal} />
             </div>
@@ -347,6 +425,50 @@ export default function DashboardView({ initialData, password }) {
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+
+        {/* 12개월 추이 라인 차트 */}
+        {scaledTrendData.length > 0 && chartData.length > 0 && (
+          <div style={S.panel}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: 8, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{curLabel} 12개월 추이</div>
+              {trendOverallChange !== null && (
+                <div style={{ fontSize: 13, fontWeight: 700, color: trendOverallChange >= 0 ? "#4AC978" : "#E85454" }}>
+                  지난 12개월 {trendOverallChange >= 0 ? "+" : ""}{trendOverallChange}%
+                </div>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>
+              각 {curLabel.replace("별", "")} 평균 {unitLabel} 추이 (선택 시점 기준 직전 12개월)
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={scaledTrendData} margin={{ top: 20, right: 30, bottom: 10, left: 10 }}>
+                <XAxis
+                  dataKey="month"
+                  tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }}
+                  tickFormatter={(v) => `${parseInt(v.split("-")[1], 10)}월`}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={0}
+                />
+                <YAxis hide domain={["auto", "auto"]} />
+                <Tooltip content={<TrendTip groupColorMap={groupColorMap} />} cursor={{ stroke: "rgba(255,255,255,0.15)" }} />
+                {chartData.map((g) => (
+                  <Line
+                    key={g.name}
+                    type="monotone"
+                    dataKey={g.name}
+                    stroke={groupColorMap[g.name]}
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: groupColorMap[g.name], strokeWidth: 0 }}
+                    activeDot={{ r: 5 }}
+                    isAnimationActive={false}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {/* Range Chart */}
         <div style={S.panel}>
