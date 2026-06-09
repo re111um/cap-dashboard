@@ -355,7 +355,35 @@ const effectiveSalary = (d) => {
 
 **한계**: 직전 1회 변경만 추적 가능. 2회 이상의 과거 시점 (예: 24년 → 25년 → 26년)을 정확히 보려면 B/C/D 옵션 필요.
 
-### 12개월 추이 라인 차트 (구현 완료) ⭐
+### 급여 인상률 시각화 (Lollipop + 카드3, 구현 완료) ⭐
+**의뢰자 결정**: 기간 토글 `[분기(3) | 반기(6) | 연(12)]`, 카드 3개(최고/평균/최저) + 도트 차트, 0% 그룹도 표시, 음수 표시 가능, 기존 12개월 라인 차트 제거
+
+**추가 룰**:
+- 룰 1: `contractDate === joinDate` 또는 `contractDate` 비어있음 → 직전 계약 없음 → 인상 추이 제외
+- 룰 2: `rank === "이사"` → 모든 평균/분포도/인상 추이에서 제외, **합계엔 포함**
+
+**`lib/aggregate.js`**:
+- `computeAll({ ..., raisePeriodMonths = 12 })`
+- `hasPriorContract(d)`: `contractDate && joinDate && contractDate !== joinDate && prevSalary > 0`
+- `raiseEligible(d)`: `rank !== "이사" && hasPriorContract(d)`
+- `currentRaiseSet` / `pastRaiseSet` → 전사 `companyRaiseRate` 계산
+- 탭 루프 안: agg 객체에 `baseSalary/count` (이사 포함, 합계용) + `baseSalaryAvg/countAvg` (이사 제외, 평균용) 분리
+- 탭별 `raiseRates`: agg 그룹 기준 + 0% 그룹 포함, ratePct 내림차순
+- 분포도(dist): 이사 개인 항상 제외 (이전 룰 dept-only → 전체로 확대됨)
+- 출력: `data.companyRaiseRate`, `data.raisePeriodMonths`, `tabs[k].raiseRates`
+
+**`components/DashboardView.jsx`**:
+- `raisePeriod` state (3|6|12) → refetch 시 `raisePeriodMonths` 전달
+- 카드 3개 + 기간 토글 + 도트 차트 (순수 div 기반, RangeChart 패턴)
+- `maxRaiseRate` useMemo로 도트 위치 계산
+- `groupColorMap`은 메인 막대 차트와 동일 색상 매핑 재사용
+
+**제거된 것**:
+- `TrendTip` 컴포넌트, `LineChart` import
+- `trendData`, `scaledTrendData`, `trendOverallChange`
+- `monthlySnapshots`, `trendArr`, `tabs[k].trend`
+
+### 시점별 정확한 연봉 계산 (구현 완료) — 종전 항목 유지
 **의뢰자 결정**:
 - 선택 시점 기준 직전 12개월 평균 연봉 추이를 라인 차트로
 - **그룹별 다중 라인** (현재 탭의 그룹 = 라인 색상 = 메인 막대 차트와 동일)
@@ -446,7 +474,7 @@ const effectiveSalary = (d) => {
 | 집계 로직 변경 / 탭별 필터 | `lib/aggregate.js` `computeAll`, `TAB_EXCLUDE` |
 | 월별 추이 로직 | `lib/aggregate.js` `computeAll` 의 `asOfMonth` 블록 |
 | 시점별 연봉 산출 로직 | `lib/aggregate.js` `effectiveSalary` |
-| 12개월 추이 (라인 차트) | `lib/aggregate.js` `snapshotAt`, `monthlySnapshots`, `trendArr` 블록 + `components/DashboardView.jsx` LineChart 패널 |
+| 급여 인상률 시각화 | `lib/aggregate.js` `raiseRates`/`companyRaiseRate` 블록 + `components/DashboardView.jsx` 카드3+Lollipop 패널 |
 | 차트 UI 변경 | `components/DashboardView.jsx` Bar Chart 섹션 |
 | 분포도 변경 | `components/DashboardView.jsx` `RangeChart` 함수 |
 | 월 네비게이션 UI | `components/DashboardView.jsx` "Month Navigation" 블록 |
@@ -470,4 +498,6 @@ const effectiveSalary = (d) => {
 
 ---
 
-*마지막 업데이트: 2026-06-09 — 월별 추이(`asOfMonth`) + 퇴사일 + `effectiveSalary` + 12개월 추이 + Q1 결정 A→C 변경(연/월 토글 항상 표시) + `page.jsx` 초기 fetch 동기화. 새 작업 적용 시 관련 섹션과 이 줄 갱신할 것.*
+*마지막 업데이트: 2026-06-09 — 급여 인상률 시각화 (Lollipop + 카드3 + 기간 토글) 구현. 12개월 라인 차트는 제거됨. `이사` 직급은 합계엔 포함되나 평균/분포도/인상 추이엔 제외. 추가 작업 시 이 줄 갱신.*
+
+> 주의: 위쪽 12번 섹션에 "12개월 추이 라인 차트" 옛 설명이 남아있을 수 있음 — 무시하고 "급여 인상률 시각화" 섹션을 참조할 것. 다음 정리 시 옛 12개월 추이 섹션 본문 제거 필요.

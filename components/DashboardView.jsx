@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo, useCallback } from "react";
 import {
-  ComposedChart, Bar, Line, LineChart, XAxis, YAxis, Tooltip,
+  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell,
 } from "recharts";
 
@@ -41,25 +41,6 @@ function MultiLineTick({ x, y, payload }) {
         </text>
       ))}
     </g>
-  );
-}
-
-/* ─── Trend Tooltip (12개월 추이용) ─── */
-function TrendTip({ active, payload, label, groupColorMap }) {
-  if (!active || !payload?.length) return null;
-  const [y, m] = (label || "").split("-");
-  const items = payload.filter((p) => p.dataKey !== "_overallAvg" && typeof p.value === "number");
-  items.sort((a, b) => b.value - a.value);
-  return (
-    <div style={{ background: "rgba(15,18,30,0.96)", border: `1px solid ${opacity(0.25)}`, borderRadius: 10, padding: "12px 16px", color: "#E8E4DC", fontSize: 12, lineHeight: 1.7, maxWidth: 280 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 6 }}>{y}년 {parseInt(m, 10)}월</div>
-      {items.map((p, i) => (
-        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
-          <span style={{ color: groupColorMap?.[p.dataKey] || "rgba(232,228,220,0.7)" }}>{p.dataKey}</span>
-          <span style={{ color: "#fff", fontWeight: 600 }}>{fmt(p.value)}</span>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -154,6 +135,7 @@ export default function DashboardView({ initialData, password }) {
   const [showAvg, setShowAvg] = useState(false);
   const [chartUnit, setChartUnit] = useState("year"); // 'year' | 'month' — asOfMonth 없을 때만 적용
   const [asOfMonth, setAsOfMonth] = useState(currentMonth); // 초기 진입 시 현재 월 (Q2)
+  const [raisePeriod, setRaisePeriod] = useState(12); // 3 | 6 | 12 (분기/반기/연)
   const [data, setData] = useState(initialData);
   const [fetching, setFetching] = useState(false);
 
@@ -167,13 +149,14 @@ export default function DashboardView({ initialData, password }) {
         incRet: opts.incRet ?? incRet,
         incPerf: opts.incPerf ?? incPerf,
         asOfMonth: "asOfMonth" in opts ? opts.asOfMonth : asOfMonth,
+        raisePeriodMonths: opts.raisePeriodMonths ?? raisePeriod,
         force: !!opts.force,
       }),
     });
     const d = await res.json();
     if (!d.error) setData(d);
     setFetching(false);
-  }, [password, incRet, incPerf, asOfMonth]);
+  }, [password, incRet, incPerf, asOfMonth, raisePeriod]);
 
   const toggle = (field, current) => {
     const next = !current;
@@ -192,7 +175,7 @@ export default function DashboardView({ initialData, password }) {
   const tabData = data?.tabs?.[tab];
   const chartData = tabData?.agg || [];
   const distData = tabData?.dist || [];
-  const trendData = tabData?.trend || [];
+  const raiseRates = tabData?.raiseRates || [];
   const colors = useMemo(() => barColors(chartData.length), [chartData.length]);
   // 메인 차트와 동일한 그룹 색상 매핑 (라인 차트에서 재사용)
   const groupColorMap = useMemo(() => {
@@ -220,25 +203,11 @@ export default function DashboardView({ initialData, password }) {
       max: Math.round(d.max / 12),
     }));
   }, [distData, chartUnit]);
-  // 12개월 추이 데이터 스케일링 (month 키 외 모두 /12)
-  const scaledTrendData = useMemo(() => {
-    if (chartUnit === "year") return trendData;
-    return trendData.map((row) => {
-      const scaled = { month: row.month };
-      for (const k in row) {
-        if (k !== "month") scaled[k] = Math.round(row[k] / 12);
-      }
-      return scaled;
-    });
-  }, [trendData, chartUnit]);
-  // 12개월 전사 평균 인상률
-  const trendOverallChange = useMemo(() => {
-    if (scaledTrendData.length < 2) return null;
-    const first = scaledTrendData.find((d) => d._overallAvg > 0)?._overallAvg;
-    const last = scaledTrendData[scaledTrendData.length - 1]?._overallAvg;
-    if (!first || !last) return null;
-    return +(((last - first) / first) * 100).toFixed(1);
-  }, [scaledTrendData]);
+  // 인상률 차트용 최대값 (막대 길이 비율 계산용)
+  const maxRaiseRate = useMemo(() => {
+    if (!raiseRates.length) return 1;
+    return Math.max(...raiseRates.map((d) => d.ratePct), 1);
+  }, [raiseRates]);
   const yMax = useMemo(() => {
     if (!scaledChartData.length) return 1;
     const vals = [
@@ -424,47 +393,66 @@ export default function DashboardView({ initialData, password }) {
           </ResponsiveContainer>
         </div>
 
-        {/* 12개월 추이 라인 차트 */}
-        {scaledTrendData.length > 0 && chartData.length > 0 && (
+        {/* 급여 인상률 카드 3개 + Lollipop 차트 */}
+        {raiseRates.length > 0 && (
           <div style={S.panel}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: 8, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{curLabel} 12개월 추이</div>
-              {trendOverallChange !== null && (
-                <div style={{ fontSize: 13, fontWeight: 700, color: trendOverallChange >= 0 ? "#4AC978" : "#E85454" }}>
-                  지난 12개월 {trendOverallChange >= 0 ? "+" : ""}{trendOverallChange}%
-                </div>
-              )}
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{curLabel} 인상률</div>
+              {/* 기간 토글 */}
+              <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: 2 }}>
+                {[{ k: 3, l: "분기" }, { k: 6, l: "반기" }, { k: 12, l: "연" }].map((p) => (
+                  <button key={p.k} onClick={() => { setRaisePeriod(p.k); refetch({ raisePeriodMonths: p.k }); }}
+                    style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: raisePeriod === p.k ? "rgba(94,81,255,0.2)" : "transparent", color: raisePeriod === p.k ? "#A89BFF" : "rgba(232,228,220,0.45)", fontSize: 11, fontWeight: raisePeriod === p.k ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>{p.l}</button>
+                ))}
+              </div>
             </div>
             <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>
-              각 {curLabel.replace("별", "")} 평균 {unitLabel} 추이 (선택 시점 기준 직전 12개월)
+              직전 {data.raisePeriodMonths}개월 평균 연봉 변화율 (이사 직급·직전 계약 없는 인원 제외)
             </div>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={scaledTrendData} margin={{ top: 20, right: 30, bottom: 10, left: 10 }}>
-                <XAxis
-                  dataKey="month"
-                  tick={{ fill: "rgba(232,228,220,0.65)", fontSize: 11, fontWeight: 500 }}
-                  tickFormatter={(v) => `${parseInt(v.split("-")[1], 10)}월`}
-                  axisLine={false}
-                  tickLine={false}
-                  interval={0}
-                />
-                <YAxis hide domain={["auto", "auto"]} />
-                <Tooltip content={<TrendTip groupColorMap={groupColorMap} />} cursor={{ stroke: "rgba(255,255,255,0.15)" }} />
-                {chartData.map((g) => (
-                  <Line
-                    key={g.name}
-                    type="monotone"
-                    dataKey={g.name}
-                    stroke={groupColorMap[g.name]}
-                    strokeWidth={2}
-                    dot={{ r: 3, fill: groupColorMap[g.name], strokeWidth: 0 }}
-                    activeDot={{ r: 5 }}
-                    isAnimationActive={false}
-                    connectNulls
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
+
+            {/* 카드 3개 */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 24 }}>
+              <div style={S.card}>
+                <div style={{ fontSize: 11, color: "rgba(232,228,220,0.45)", marginBottom: 6 }}>최고 인상 {curLabel.replace("별", "")}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{raiseRates[0].name}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#4AC978", marginTop: 2 }}>+{raiseRates[0].ratePct}%</div>
+              </div>
+              <div style={S.card}>
+                <div style={{ fontSize: 11, color: "rgba(232,228,220,0.45)", marginBottom: 6 }}>전사 평균 인상률</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#4AC978", marginTop: 18 }}>
+                  {data.companyRaiseRate >= 0 ? "+" : ""}{data.companyRaiseRate}%
+                </div>
+                <div style={{ fontSize: 11, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>직전 {data.raisePeriodMonths}개월</div>
+              </div>
+              <div style={S.card}>
+                <div style={{ fontSize: 11, color: "rgba(232,228,220,0.45)", marginBottom: 6 }}>최저 인상 {curLabel.replace("별", "")}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{raiseRates[raiseRates.length - 1].name}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#4AC978", marginTop: 2 }}>
+                  {raiseRates[raiseRates.length - 1].ratePct >= 0 ? "+" : ""}{raiseRates[raiseRates.length - 1].ratePct}%
+                </div>
+              </div>
+            </div>
+
+            {/* Lollipop 차트 (div 기반) */}
+            <div style={{ padding: "12px 8px 0" }}>
+              {raiseRates.map((d) => {
+                const pct = maxRaiseRate > 0 ? Math.max(0, (d.ratePct / maxRaiseRate) * 100) : 0;
+                const color = groupColorMap[d.name] || BASE;
+                return (
+                  <div key={d.name} style={{ display: "flex", alignItems: "center", height: 42, gap: 8 }}>
+                    <div style={{ width: 140, flexShrink: 0, textAlign: "right", paddingRight: 14, fontSize: 13, fontWeight: 500, color: "rgba(232,228,220,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+                    <div style={{ flex: 1, position: "relative", height: 14 }}>
+                      <div style={{ position: "absolute", left: 0, top: 6, width: `${pct}%`, height: 2, background: color, opacity: 0.5 }} />
+                      <div style={{ position: "absolute", left: `${pct}%`, top: 1, width: 12, height: 12, borderRadius: "50%", background: color, transform: "translateX(-50%)", border: "2px solid rgba(15,18,30,0.8)" }} />
+                      <span style={{ position: "absolute", left: `calc(${pct}% + 14px)`, top: -2, fontSize: 12, color: "#4AC978", fontWeight: 600, whiteSpace: "nowrap" }}>
+                        {d.ratePct >= 0 ? "+" : ""}{d.ratePct}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{ marginLeft: 140, marginTop: 8, paddingLeft: 8, fontSize: 11, color: "rgba(232,228,220,0.3)" }}>0%</div>
+            </div>
           </div>
         )}
 

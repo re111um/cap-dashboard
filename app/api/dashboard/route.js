@@ -61,7 +61,7 @@ async function loadEncryptedData(force = false) {
 
 export async function POST(request) {
   try {
-    const { password, incRet, incPerf, asOfMonth, force } = await request.json();
+    const { password, incRet, incPerf, asOfMonth, raisePeriodMonths, force } = await request.json();
 
     if (password !== process.env.DASHBOARD_PASSWORD) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -86,6 +86,7 @@ export async function POST(request) {
       incRet: !!incRet,
       incPerf: !!incPerf,
       asOfMonth: asOfMonth || null,
+      raisePeriodMonths: raisePeriodMonths || 12,
     });
 
     return NextResponse.json({
