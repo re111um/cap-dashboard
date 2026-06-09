@@ -203,11 +203,8 @@ export default function DashboardView({ initialData, password }) {
       max: Math.round(d.max / 12),
     }));
   }, [distData, chartUnit]);
-  // 인상률 차트용 최대값 (막대 길이 비율 계산용)
-  const maxRaiseRate = useMemo(() => {
-    if (!raiseRates.length) return 1;
-    return Math.max(...raiseRates.map((d) => d.ratePct), 1);
-  }, [raiseRates]);
+  // 인상률 차트 최대값: 100% 고정. 100% 초과는 100%로 클램프 (수치 라벨은 실제값 표시)
+  const RAISE_CHART_MAX = 100;
   const yMax = useMemo(() => {
     if (!scaledChartData.length) return 1;
     const vals = [
@@ -436,7 +433,7 @@ export default function DashboardView({ initialData, password }) {
             {/* Lollipop 차트 (div 기반) */}
             <div style={{ padding: "12px 8px 0" }}>
               {raiseRates.map((d) => {
-                const pct = maxRaiseRate > 0 ? Math.max(0, (d.ratePct / maxRaiseRate) * 100) : 0;
+                const pct = Math.min(100, Math.max(0, (d.ratePct / RAISE_CHART_MAX) * 100));
                 const color = groupColorMap[d.name] || BASE;
                 return (
                   <div key={d.name} style={{ display: "flex", alignItems: "center", height: 42, gap: 8 }}>
