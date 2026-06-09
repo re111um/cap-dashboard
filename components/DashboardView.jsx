@@ -186,8 +186,8 @@ export default function DashboardView({ initialData, password }) {
   const toggleTotal = () => { if (showTotal && !showAvg) return; setShowTotal(!showTotal); };
   const toggleAvg = () => { if (showAvg && !showTotal) return; setShowAvg(!showAvg); };
 
-  // 월 네비게이션 활성 시 자동으로 "월" 단위 표시 (Q1: A안)
-  const effectiveChartUnit = asOfMonth ? "month" : chartUnit;
+  // chartUnit은 사용자가 직접 제어 (Q1: C안 — 토글 독립)
+  // 월 네비게이션과 무관하게 항상 표시되며, 사용자 선택 우선
 
   const tabData = data?.tabs?.[tab];
   const chartData = tabData?.agg || [];
@@ -202,7 +202,7 @@ export default function DashboardView({ initialData, password }) {
   }, [chartData, colors]);
   // 월/연 표시 단위에 따라 차트·분포도 값을 스케일링 (백엔드 데이터는 연 단위 그대로 유지)
   const scaledChartData = useMemo(() => {
-    if (effectiveChartUnit === "year") return chartData;
+    if (chartUnit === "year") return chartData;
     return chartData.map((d) => ({
       ...d,
       total: Math.round(d.total / 12),
@@ -210,19 +210,19 @@ export default function DashboardView({ initialData, password }) {
       retInc: Math.round(d.retInc / 12),
       perfInc: Math.round(d.perfInc / 12),
     }));
-  }, [chartData, effectiveChartUnit]);
+  }, [chartData, chartUnit]);
   const scaledDistData = useMemo(() => {
-    if (effectiveChartUnit === "year") return distData;
+    if (chartUnit === "year") return distData;
     return distData.map((d) => ({
       ...d,
       min: Math.round(d.min / 12),
       median: Math.round(d.median / 12),
       max: Math.round(d.max / 12),
     }));
-  }, [distData, effectiveChartUnit]);
+  }, [distData, chartUnit]);
   // 12개월 추이 데이터 스케일링 (month 키 외 모두 /12)
   const scaledTrendData = useMemo(() => {
-    if (effectiveChartUnit === "year") return trendData;
+    if (chartUnit === "year") return trendData;
     return trendData.map((row) => {
       const scaled = { month: row.month };
       for (const k in row) {
@@ -230,7 +230,7 @@ export default function DashboardView({ initialData, password }) {
       }
       return scaled;
     });
-  }, [trendData, effectiveChartUnit]);
+  }, [trendData, chartUnit]);
   // 12개월 전사 평균 인상률
   const trendOverallChange = useMemo(() => {
     if (scaledTrendData.length < 2) return null;
@@ -247,7 +247,7 @@ export default function DashboardView({ initialData, password }) {
     ];
     return Math.max(...vals, 1);
   }, [scaledChartData, showTotal, showAvg]);
-  const unitLabel = effectiveChartUnit === "month" ? "월급" : "연봉";
+  const unitLabel = chartUnit === "month" ? "월급" : "연봉";
 
   const S = {
     wrap: { minHeight: "100vh", background: "linear-gradient(160deg,#0A0F1C,#111827,#150F20)", fontFamily: "'Noto Sans KR','Pretendard',sans-serif", color: "#E8E4DC", padding: "32px 24px" },
@@ -395,14 +395,12 @@ export default function DashboardView({ initialData, password }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: 8, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{curLabel} {unitLabel}</div>
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              {/* 월 네비게이션 활성 시 연/월 토글 숨김 (자동으로 "월" 단위 적용) */}
-              {!asOfMonth && (
-                <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: 2 }}>
-                  {[{ k: "year", l: "연" }, { k: "month", l: "월" }].map((u) => (
-                    <button key={u.k} onClick={() => setChartUnit(u.k)} style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: chartUnit === u.k ? "rgba(94,81,255,0.2)" : "transparent", color: chartUnit === u.k ? "#A89BFF" : "rgba(232,228,220,0.45)", fontSize: 11, fontWeight: chartUnit === u.k ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>{u.l}</button>
-                  ))}
-                </div>
-              )}
+              {/* 연/월 토글: 월 네비게이션과 독립적으로 항상 표시 */}
+              <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: 2 }}>
+                {[{ k: "year", l: "연" }, { k: "month", l: "월" }].map((u) => (
+                  <button key={u.k} onClick={() => setChartUnit(u.k)} style={{ padding: "4px 12px", borderRadius: 4, border: "none", background: chartUnit === u.k ? "rgba(94,81,255,0.2)" : "transparent", color: chartUnit === u.k ? "#A89BFF" : "rgba(232,228,220,0.45)", fontSize: 11, fontWeight: chartUnit === u.k ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>{u.l}</button>
+                ))}
+              </div>
               <ChkLabel on={showTotal} onClick={toggleTotal} label="합계" color={BASE} disabled={showTotal && !showAvg} />
               <ChkLabel on={showAvg} onClick={toggleAvg} label="평균" color="#4AC978" disabled={showAvg && !showTotal} />
             </div>

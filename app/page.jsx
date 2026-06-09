@@ -4,6 +4,12 @@ import DashboardView from "@/components/DashboardView";
 
 const BASE = "#5E51FF";
 
+// 오늘 기준 현재 월을 "YYYY-MM" 형식으로 반환 (DashboardView와 동일 로직)
+function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export default function Home() {
   const [phase, setPhase] = useState("login"); // login | dashboard | admin
   const [password, setPassword] = useState("");
@@ -18,7 +24,7 @@ export default function Home() {
       const res = await fetch("/api/dashboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, incRet: false, incPerf: false, hideClv: false }),
+        body: JSON.stringify({ password, incRet: false, incPerf: false, asOfMonth: currentMonth() }),
       });
       if (res.status === 401) { setErr("비밀번호가 일치하지 않습니다"); setLoading(false); return; }
       if (res.status === 404) { setErr("데이터가 없습니다. 관리자에게 문의하세요."); setLoading(false); return; }

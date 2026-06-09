@@ -157,7 +157,9 @@ const CACHE_TTL_SEC = 300; // 5분. 조정하려면 이 값만 바꾸면 됨.
 
 ### 8.1. 탭별 필터링 (의뢰자 결정사항)
 - **전체 인원/총 연봉 합계**: C-lv, 이사, CEO/CTO/COO/CFO **모두 포함**
-- **본부별(dept) 탭**: 전체 포함 (C-lv 그룹도 보임)
+- **본부별(dept) 탭**:
+  - 막대 차트·표·추이: C-lv 포함
+  - **분포도(RangeChart): C-lv 제외** (개별 임원 연봉이 분포 양극에 노출되는 것을 방지)
 - **조직별(team) 탭**: CEO/CTO/COO/CFO 그룹 제외
 - **직급별(rank) 탭**: 이사 그룹 제외
 - **직무별(job) 탭**: 전체 포함
@@ -200,11 +202,18 @@ stillEmployed = !leaveDate || leaveDate >= 해당월1일
 
 **일할계산 없음**: 그 월 단 하루라도 재직했으면 `계약금액 ÷ 12` 풀 적용 (의뢰자 명시 결정)
 
-**chartUnit과의 관계** (확정 — Q1 A안):
-- `asOfMonth`가 설정되면 → 자동으로 `effectiveChartUnit = "month"`
-- 차트 헤더의 `[연 | 월]` 토글은 숨겨짐
-- "전체 보기" 클릭 → 토글 복원 + 사용자가 마지막 선택한 단위(`chartUnit`)로 복귀
-- 코드: `const effectiveChartUnit = asOfMonth ? "month" : chartUnit;`
+**chartUnit과의 관계** (확정 — Q1 C안: 토글 독립):
+- `chartUnit` ('year' | 'month') 토글은 **항상 차트 헤더에 표시**되며 사용자가 직접 제어
+- `asOfMonth` 활성 여부와 무관 — 사용자가 명시적으로 선택
+- 의미 있는 조합:
+  - 월 네비 활성 + `chartUnit=month` (가장 흔함): 그 달 재직자의 **월급** 표시
+  - 월 네비 활성 + `chartUnit=year`: 그 달 재직자의 **연봉** 표시
+  - 월 네비 비활성 + `chartUnit=year/month`: 전체 인원의 연봉/월급
+- 이전엔 A안(자동 월 전환 + 토글 숨김)을 채택했었으나, 직관과 어긋나 의뢰자 요청으로 C안으로 변경됨 (2026-06-09 수정)
+
+**초기 로딩 동기화**:
+- `app/page.jsx`가 로그인 시 `asOfMonth: currentMonth()` 와 함께 첫 fetch 호출
+- 이렇게 해야 DashboardView가 `useState(currentMonth)`로 UI 표시한 월과 실제 백엔드 필터링 결과가 일치함 (예전엔 안 맞아 퇴사자가 포함돼 보이던 버그 발생)
 
 ---
 
@@ -241,11 +250,11 @@ stillEmployed = !leaveDate || leaveDate >= 해당월1일
 - `type="category"`, `scale="band"`도 명시하지 말 것 — Recharts 기본값에 위임
 - ComposedChart에 Bar가 있으면 자동으로 band scale 사용됨
 
-### 9.5. 차트 단위 (`effectiveChartUnit`)
-- `chartUnit` state ('year' | 'month') + `asOfMonth` 활성 시 자동 'month' 강제 → `effectiveChartUnit` 계산값 사용
-- 스케일링은 `scaledChartData`, `scaledDistData` useMemo에서 `effectiveChartUnit === "month"`일 때 `/12` 처리
-- 막대 차트 + 분포도 차트만 토글 영향. 헤더/카드/표는 그대로 (표는 이미 "연봉 합계", "월급 합계" 두 컬럼 모두 표시)
-- 헤더 우측 영역도 asOfMonth 활성 시 "X년 Y월 월급 합계 / 연 환산 ZZ만원"으로 자동 전환
+### 9.5. 차트 단위 (`chartUnit`)
+- `chartUnit` state ('year' | 'month'): 사용자가 직접 토글 (C안 — 8.6 참조)
+- 스케일링은 `scaledChartData`, `scaledDistData`, `scaledTrendData` useMemo에서 `chartUnit === "month"`일 때 `/12` 처리
+- 막대 차트 + 분포도 차트 + 추이 차트만 토글 영향. 헤더/카드/표는 그대로 (표는 이미 "연봉 합계", "월급 합계" 두 컬럼 모두 표시)
+- 헤더 우측 영역은 asOfMonth 활성 시 "X년 Y월 월급 합계 / 연 환산 ZZ만원"으로 자동 전환 (이건 의미 명확성 위해 asOfMonth 기반으로 유지)
 
 ### 9.6. 분포도 (Range Chart)
 - 커스텀 컴포넌트 (Recharts가 아닌 순수 div). `min`/`median`/`max` 동그라미 3개 + 연결선
@@ -348,7 +357,7 @@ const effectiveSalary = (d) => {
 **의뢰자 결정**:
 - 선택 시점 기준 직전 12개월 평균 연봉 추이를 라인 차트로
 - **그룹별 다중 라인** (현재 탭의 그룹 = 라인 색상 = 메인 막대 차트와 동일)
-- 단위는 메인 차트와 동일 (`effectiveChartUnit` 재사용)
+- 단위는 메인 차트와 동일 (`chartUnit` 재사용)
 - 패널 위치: 메인 막대 차트 아래, 분포도 위
 
 **구현**:
@@ -359,7 +368,7 @@ const effectiveSalary = (d) => {
   - 출력: `tabs[tab.key].trend = trendArr`
 - `components/DashboardView.jsx`:
   - `TrendTip` 커스텀 툴팁
-  - `scaledTrendData` useMemo (`effectiveChartUnit`에 따라 /12)
+  - `scaledTrendData` useMemo (`chartUnit`에 따라 /12)
   - `trendOverallChange` useMemo: 첫 월 `_overallAvg` ↔ 마지막 월 `_overallAvg` 변화율
   - `groupColorMap` useMemo: 메인 차트 색상 매핑 재사용
   - LineChart 패널: `chartData.map`으로 `<Line dataKey={groupName}>` 그리기
@@ -459,4 +468,4 @@ const effectiveSalary = (d) => {
 
 ---
 
-*마지막 업데이트: 2026-06-09 — 월별 추이(`asOfMonth`) + 퇴사일 + 시점별 정확한 연봉 계산(`effectiveSalary`) + 12개월 추이 라인 차트 구현. 새 작업 적용 시 관련 섹션과 이 줄 갱신할 것.*
+*마지막 업데이트: 2026-06-09 — 월별 추이(`asOfMonth`) + 퇴사일 + `effectiveSalary` + 12개월 추이 + Q1 결정 A→C 변경(연/월 토글 항상 표시) + `page.jsx` 초기 fetch 동기화. 새 작업 적용 시 관련 섹션과 이 줄 갱신할 것.*
