@@ -361,14 +361,26 @@ const effectiveSalary = (d) => {
 **추가 룰**:
 - 룰 1: `contractDate === joinDate` 또는 `contractDate` 비어있음 → 직전 계약 없음 → 인상 추이 제외
 - 룰 2: `rank === "이사"` → 모든 평균/분포도/인상 추이에서 제외, **합계엔 포함**
+- 룰 3 (2026-06-22 추가): **이전 계약금액(`prevSalary`)이 없는 인원은 인상률 산식에서 제외**
 
-**`lib/aggregate.js`**:
-- `computeAll({ ..., raisePeriodMonths = 12 })`
-- `hasPriorContract(d)`: `contractDate && joinDate && contractDate !== joinDate && prevSalary > 0`
-- `raiseEligible(d)`: `rank !== "이사" && hasPriorContract(d)`
-- `currentRaiseSet` / `pastRaiseSet` → 전사 `companyRaiseRate` 계산
+**인상률 산식 변경 (2026-06-22) — 음수(-%) 혼란 제거 ⭐**:
+- 구방식(폐기): "현재 재직 자격자 평균"(`currentRaiseSet`) vs "N개월 전 재직 자격자 평균"(`pastRaiseSet`, `snapshotAt` 스냅샷) 두 **서로 다른 코호트**의 평균을 비교 → 퇴사/신규 합류 등 구성원 변동으로 개개인은 인상돼도 본부 평균이 떨어져 `-%`가 찍힘 (의사결정권자 혼란).
+- **기간 책정 = 달력 기준 (2026-06-22 추가, 롤링 아님)**:
+  - 분기(3) → 1~3월=1분기, 4~6월=2분기, 7~9월=3분기, 10~12월=4분기 (조회 시점이 속한 분기)
+  - 반기(6) → 1~6월=상반기, 7~12월=하반기 / 연(12) → 1~12월 (조회 시점이 속한 연도)
+  - `periodStart = new Date(refYear, startMonth0, 1)` (분기: `floor(refMonth0/3)*3`, 반기: `floor(refMonth0/6)*6`, 연: 0)
+  - 예) 조회 시점(asOfMonth/today)이 6월이면 2분기, 2월이면 1분기. asOfMonth 월 네비로 분기/반기/연 시점이 함께 이동
+  - 출력에 `raisePeriodLabel`("2026년 2분기"/"2026년 상반기"/"2026년")·`raiseComparePhrase`("지난 분기 대비" 등) 추가 → 카드/캡션 표기
+- **신방식 (B안 — 기간 내 인상자만, 개인별 인상률 평균)**:
+  - `raisedInPeriod(d)`: `rank!=="이사" && prevSalary>0 && contractDate && joinDate && contractDate!==joinDate && periodStart ≤ contractDate ≤ queryDate`
+    - 즉, 해당 달력 기간 안에 **새 계약(인상)이 실제 발효된** 인원만 집계 (직전 계약금액 ≈ 직전 기간 수준 → "지난 분기 대비")
+  - `raisePctOf(d) = (d.salary − d.prevSalary) / d.prevSalary × 100` — **같은 사람의 전/후 비교** → 음수 불가능
+  - 전사 `companyRaiseRate` = `raiseSet`(=`data.filter(raisedInPeriod)`) 개인별 인상률의 단순 평균
+  - 그룹별 `raiseRates`: `groupRaise[k]`에 `pctSum/curSum/prevSum/count` 누적 → `ratePct = pctSum/count`
+  - 기간 내 인상자 0명 그룹은 0% (음수 아님). 짧은 기간(분기)은 본부별 표본이 적을 수 있음 (의뢰자 인지)
+  - `snapshotAt` 헬퍼는 더 이상 인상률에 쓰이지 않아 **제거됨**
 - 탭 루프 안: agg 객체에 `baseSalary/count` (이사 포함, 합계용) + `baseSalaryAvg/countAvg` (이사 제외, 평균용) 분리
-- 탭별 `raiseRates`: agg 그룹 기준 + 0% 그룹 포함, ratePct 내림차순
+- 탭별 `raiseRates`: agg 그룹 기준 + 0% 그룹 포함, ratePct 내림차순. 출력 필드 형태(`name/ratePct/currentAvg/pastAvg/count`)는 동일 — `currentAvg`=기간내 인상자 평균 현재연봉, `pastAvg`=평균 직전 계약금액
 - 분포도(dist): 이사 개인 항상 제외 (이전 룰 dept-only → 전체로 확대됨)
 - 출력: `data.companyRaiseRate`, `data.raisePeriodMonths`, `tabs[k].raiseRates`
 
@@ -498,6 +510,6 @@ const effectiveSalary = (d) => {
 
 ---
 
-*마지막 업데이트: 2026-06-09 — 급여 인상률 시각화 (Lollipop + 카드3 + 기간 토글) 구현. 12개월 라인 차트는 제거됨. `이사` 직급은 합계엔 포함되나 평균/분포도/인상 추이엔 제외. 추가 작업 시 이 줄 갱신.*
+*마지막 업데이트: 2026-06-22 — 인상률 산식을 "기간 내 인상자 개인별 인상률 평균"(B안)으로 변경(snapshotAt/pastRaiseSet 폐기 → 본부별 `-%` 혼란 제거, `이전 계약금액` 없는 인원 제외). 추가로 기간을 달력 기준(분기=1~3월/4~6월…, 반기, 연)으로 책정하도록 변경, `raisePeriodLabel`/`raiseComparePhrase` 출력 추가. 추가 작업 시 이 줄 갱신.*
 
 > 주의: 위쪽 12번 섹션에 "12개월 추이 라인 차트" 옛 설명이 남아있을 수 있음 — 무시하고 "급여 인상률 시각화" 섹션을 참조할 것. 다음 정리 시 옛 12개월 추이 섹션 본문 제거 필요.

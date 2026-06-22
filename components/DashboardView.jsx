@@ -176,6 +176,8 @@ export default function DashboardView({ initialData, password }) {
   const chartData = tabData?.agg || [];
   const distData = tabData?.dist || [];
   const raiseRates = tabData?.raiseRates || [];
+  // 해당 기간(분기/반기/연)에 발효된 인상이 한 건도 없으면 안내 문구 표시
+  const noRaiseInPeriod = raiseRates.length > 0 && raiseRates.every((d) => d.count === 0);
   const colors = useMemo(() => barColors(chartData.length), [chartData.length]);
   // 메인 차트와 동일한 그룹 색상 매핑 (라인 차트에서 재사용)
   const groupColorMap = useMemo(() => {
@@ -404,9 +406,15 @@ export default function DashboardView({ initialData, password }) {
               </div>
             </div>
             <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginBottom: 20, paddingLeft: 8 }}>
-              직전 {data.raisePeriodMonths}개월 평균 연봉 변화율 (이사 직급·직전 계약 없는 인원 제외)
+              {data.raisePeriodLabel} 내 인상된 인원의 평균 인상률 · {data.raiseComparePhrase} (이사 직급·직전 계약 없는 인원 제외)
             </div>
 
+            {noRaiseInPeriod ? (
+              <div style={{ padding: "32px 16px", textAlign: "center", background: "rgba(255,255,255,0.03)", borderRadius: 10, color: "rgba(232,228,220,0.6)", fontSize: 13, lineHeight: 1.6 }}>
+                {data.raisePeriodLabel}에 발효된 인상이 없습니다.<br />
+                <span style={{ fontSize: 12, color: "rgba(232,228,220,0.4)" }}>인상이 반영된 기간을 보려면 위에서 <b style={{ color: "#A89BFF" }}>반기</b> 또는 <b style={{ color: "#A89BFF" }}>연</b>으로 전환하거나, 월 네비게이션으로 인상 시점을 선택하세요.</span>
+              </div>
+            ) : (<>
             {/* 카드 3개 */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 24 }}>
               <div style={S.card}>
@@ -419,7 +427,7 @@ export default function DashboardView({ initialData, password }) {
                 <div style={{ fontSize: 18, fontWeight: 700, color: "#4AC978", marginTop: 18 }}>
                   {data.companyRaiseRate >= 0 ? "+" : ""}{data.companyRaiseRate}%
                 </div>
-                <div style={{ fontSize: 11, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>직전 {data.raisePeriodMonths}개월</div>
+                <div style={{ fontSize: 11, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>{data.raisePeriodLabel}</div>
               </div>
               <div style={S.card}>
                 <div style={{ fontSize: 11, color: "rgba(232,228,220,0.45)", marginBottom: 6 }}>최저 인상 {curLabel.replace("별", "")}</div>
@@ -450,6 +458,7 @@ export default function DashboardView({ initialData, password }) {
               })}
               <div style={{ marginLeft: 140, marginTop: 8, paddingLeft: 8, fontSize: 11, color: "rgba(232,228,220,0.3)" }}>0%</div>
             </div>
+            </>)}
           </div>
         )}
 
