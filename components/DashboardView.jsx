@@ -271,6 +271,9 @@ export default function DashboardView({ initialData, password }) {
             <div style={{ fontSize: 12, color: "rgba(232,228,220,0.35)", marginTop: 2 }}>
               {asOfMonth ? `연 환산 ${fmt(data.totalSalary)}` : `월 ${fmt(data.monthlySalary)}`}
             </div>
+            <div style={{ fontSize: 11, color: "rgba(232,228,220,0.3)", marginTop: 4 }}>
+              전사 총계 · 임원(이사) 포함 <span style={{ color: "rgba(232,228,220,0.25)" }}>(본부별 상세는 이사 제외)</span>
+            </div>
             <button
               onClick={() => refetch({ force: true })}
               disabled={fetching}
@@ -473,7 +476,7 @@ export default function DashboardView({ initialData, password }) {
         <div style={{ ...S.panel, padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", gap: 8, alignItems: "baseline" }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>상세 데이터</span>
-            <span style={{ fontSize: 12, color: "rgba(232,228,220,0.35)" }}>(단위: 만원)</span>
+            <span style={{ fontSize: 12, color: "rgba(232,228,220,0.35)" }}>(단위: 만원 · 임원(이사) 제외)</span>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
